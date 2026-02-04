@@ -25,6 +25,14 @@ from ..core.models import (
     MCPServerConfig,
     SkillConfig,
     RAGSourceConfig,
+    BuiltinAgentDefinition,
+    BuiltinToolDefinition,
+    ToolParameter,
+    ToolParameterType,
+    PromptTemplate,
+    PromptVariable,
+    OutputFormat,
+    AgentTemplate,
 )
 from ..core.agent_node import AgentNode
 from ..orchestration.workflow import (
@@ -141,11 +149,25 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     logger.info("Starting Proton Agent Platform...")
+
+    # Initialize storage
+    from ..storage import initialize_storage
+    storage = await initialize_storage()
+    logger.info("Storage initialized")
+
+    # Pre-load workflows
+    manager = get_workflow_manager()
+    await manager._ensure_storage()
+
     yield
+
     # Shutdown
     logger.info("Shutting down Proton Agent Platform...")
     plugin_registry = get_plugin_registry()
     await plugin_registry.cleanup_all()
+
+    # Close storage
+    await storage.close()
 
 
 def create_app() -> FastAPI:
@@ -308,6 +330,9 @@ def create_app() -> FastAPI:
 
         workflow.add_agent(node, request.parent_id)
 
+        # Persist changes
+        await manager.save_current_state(workflow_id)
+
         return AgentResponse(
             id=node.id,
             name=node.name,
@@ -352,6 +377,9 @@ def create_app() -> FastAPI:
         removed = workflow.remove_agent(agent_id)
         if not removed:
             raise HTTPException(status_code=404, detail="Agent not found")
+
+        # Persist changes
+        await manager.save_current_state(workflow_id)
 
         return {"status": "removed", "id": agent_id}
 
@@ -444,7 +472,1210 @@ def create_app() -> FastAPI:
 
         return {"status": "removed", "id": plugin_id}
 
+    # ============== System Tools Endpoints ==============
+
+    @app.get("/api/system-tools")
+    async def list_system_tools():
+        """List all available system tools."""
+        from ..tools.registry import get_system_tool_registry
+        registry = get_system_tool_registry()
+
+        tools = registry.to_list()
+        return {
+            "tools": tools,
+            "categories": registry.get_categories(),
+        }
+
+    @app.get("/api/system-tools/categories")
+    async def list_system_tool_categories():
+        """List all system tool categories."""
+        from ..tools.registry import get_system_tool_registry
+        registry = get_system_tool_registry()
+
+        categories = registry.get_categories()
+        tools_by_category = {}
+        for cat in categories:
+            tools_by_category[cat] = [t.to_dict() for t in registry.list_by_category(cat)]
+
+        return {
+            "categories": categories,
+            "tools_by_category": tools_by_category,
+        }
+
+    @app.get("/api/system-tools/{tool_name}")
+    async def get_system_tool(tool_name: str):
+        """Get details of a specific system tool."""
+        from ..tools.registry import get_system_tool_registry
+        registry = get_system_tool_registry()
+
+        tool = registry.get(tool_name)
+        if not tool:
+            raise HTTPException(status_code=404, detail="System tool not found")
+
+        return tool.to_dict()
+
+    # ============== Built-in Agent Editor Endpoints ==============
+
+    @app.get("/api/workflows/{workflow_id}/agents/{agent_id}/definition")
+    async def get_agent_definition(workflow_id: str, agent_id: str):
+        """Get the full definition of a built-in agent for editing."""
+        manager = get_workflow_manager()
+        workflow = await manager.get_workflow(workflow_id)
+
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        node = workflow.get_agent(agent_id)
+        if not node:
+            raise HTTPException(status_code=404, detail="Agent not found")
+
+        # Return the full configuration
+        return {
+            "id": node.id,
+            "name": node.name,
+            "description": node.description,
+            "type": node.type.value,
+            "config": node.config.model_dump() if node.config else {},
+            "routing_strategy": node.routing_strategy.value,
+            "routing_conditions": node.routing_conditions,
+            "max_depth": node.max_depth,
+            "timeout": node.timeout,
+            "enabled": node.enabled,
+            "builtin_definition": node.config.builtin_definition.model_dump() if node.config and node.config.builtin_definition else None,
+        }
+
+    @app.put("/api/workflows/{workflow_id}/agents/{agent_id}/definition")
+    async def update_agent_definition(workflow_id: str, agent_id: str, definition: Dict[str, Any]):
+        """Update the full definition of a built-in agent."""
+        manager = get_workflow_manager()
+        workflow = await manager.get_workflow(workflow_id)
+
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        node = workflow.get_agent(agent_id)
+        if not node:
+            raise HTTPException(status_code=404, detail="Agent not found")
+
+        # Update basic fields
+        if "name" in definition:
+            node.name = definition["name"]
+        if "description" in definition:
+            node.description = definition["description"]
+        if "routing_strategy" in definition:
+            node.routing_strategy = RoutingStrategy(definition["routing_strategy"])
+        if "routing_conditions" in definition:
+            node.routing_conditions = definition["routing_conditions"]
+        if "max_depth" in definition:
+            node.max_depth = definition["max_depth"]
+        if "timeout" in definition:
+            node.timeout = definition["timeout"]
+        if "enabled" in definition:
+            node.enabled = definition["enabled"]
+
+        # Update builtin definition
+        if "builtin_definition" in definition and definition["builtin_definition"]:
+            node.type = AgentType.BUILTIN
+            if node.config is None:
+                node.config = AgentConfig()
+            node.config.builtin_definition = BuiltinAgentDefinition(**definition["builtin_definition"])
+
+        # Persist changes
+        await manager.save_current_state(workflow_id)
+
+        return {"status": "updated", "id": agent_id}
+
+    @app.post("/api/workflows/{workflow_id}/agents/{agent_id}/tools")
+    async def add_agent_tool(workflow_id: str, agent_id: str, tool: Dict[str, Any]):
+        """Add a built-in tool to an agent."""
+        manager = get_workflow_manager()
+        workflow = await manager.get_workflow(workflow_id)
+
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        node = workflow.get_agent(agent_id)
+        if not node:
+            raise HTTPException(status_code=404, detail="Agent not found")
+
+        # Ensure builtin definition exists
+        if node.config is None:
+            node.config = AgentConfig()
+        if node.config.builtin_definition is None:
+            node.config.builtin_definition = BuiltinAgentDefinition(name=node.name)
+            node.type = AgentType.BUILTIN
+
+        # Convert parameters
+        parameters = []
+        for param in tool.get("parameters", []):
+            parameters.append(ToolParameter(
+                name=param["name"],
+                type=ToolParameterType(param.get("type", "string")),
+                description=param.get("description", ""),
+                required=param.get("required", True),
+                default=param.get("default"),
+                enum=param.get("enum"),
+            ))
+
+        # Create tool definition
+        tool_def = BuiltinToolDefinition(
+            name=tool["name"],
+            description=tool.get("description", ""),
+            tool_type=tool.get("tool_type", "http"),
+            parameters=parameters,
+            http_method=tool.get("http_method", "GET"),
+            http_url=tool.get("http_url", ""),
+            http_headers=tool.get("http_headers", {}),
+            http_body_template=tool.get("http_body_template"),
+            code=tool.get("code"),
+            timeout=tool.get("timeout", 30.0),
+            approval_required=tool.get("approval_required", False),
+        )
+
+        node.config.builtin_definition.builtin_tools.append(tool_def)
+
+        # Persist changes
+        await manager.save_current_state(workflow_id)
+
+        return {"status": "added", "tool_name": tool["name"]}
+
+    @app.delete("/api/workflows/{workflow_id}/agents/{agent_id}/tools/{tool_name}")
+    async def remove_agent_tool(workflow_id: str, agent_id: str, tool_name: str):
+        """Remove a built-in tool from an agent."""
+        manager = get_workflow_manager()
+        workflow = await manager.get_workflow(workflow_id)
+
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        node = workflow.get_agent(agent_id)
+        if not node:
+            raise HTTPException(status_code=404, detail="Agent not found")
+
+        if not node.config or not node.config.builtin_definition:
+            raise HTTPException(status_code=400, detail="Agent has no builtin definition")
+
+        # Remove tool by name
+        original_count = len(node.config.builtin_definition.builtin_tools)
+        node.config.builtin_definition.builtin_tools = [
+            t for t in node.config.builtin_definition.builtin_tools
+            if t.name != tool_name
+        ]
+
+        if len(node.config.builtin_definition.builtin_tools) == original_count:
+            raise HTTPException(status_code=404, detail="Tool not found")
+
+        # Persist changes
+        await manager.save_current_state(workflow_id)
+
+        return {"status": "removed", "tool_name": tool_name}
+
+    @app.post("/api/workflows/{workflow_id}/agents/{agent_id}/test")
+    async def test_agent(workflow_id: str, agent_id: str, request: Dict[str, Any]):
+        """Test an agent with a sample message."""
+        manager = get_workflow_manager()
+        workflow = await manager.get_workflow(workflow_id)
+
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        node = workflow.get_agent(agent_id)
+        if not node:
+            raise HTTPException(status_code=404, detail="Agent not found")
+
+        message = request.get("message", "Hello, this is a test.")
+
+        # Initialize workflow if needed
+        if workflow.state.value == "created":
+            await workflow.initialize()
+
+        # Run just this agent
+        from ..core.context import ExecutionContext
+        from ..core.models import ChatMessage, MessageRole
+        from ..adapters.base import AdapterFactory
+
+        try:
+            adapter = await AdapterFactory.create_async(node)
+            ctx = ExecutionContext()
+            messages = [ChatMessage(role=MessageRole.USER, content=message)]
+
+            response = await adapter.run(messages, ctx)
+
+            return {
+                "status": "success",
+                "response": {
+                    "messages": [m.model_dump() for m in response.messages],
+                    "tool_calls": [t.model_dump() for t in response.tool_calls],
+                },
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e),
+            }
+
+    # ============== Agent Templates ==============
+
+    # In-memory cache for templates (loaded from storage)
+    _agent_templates: Dict[str, AgentTemplate] = {}
+    _templates_loaded = False
+
+    async def _ensure_templates_loaded():
+        """Load templates from storage if not already loaded."""
+        nonlocal _templates_loaded
+        if _templates_loaded:
+            return
+
+        try:
+            from ..storage import get_storage_manager
+            storage = get_storage_manager()
+            template_dicts = await storage.list_templates()
+
+            for tpl_dict in template_dicts:
+                try:
+                    definition = BuiltinAgentDefinition(**tpl_dict.get("definition", {}))
+                    agent_template = AgentTemplate(
+                        id=tpl_dict["id"],
+                        name=tpl_dict["name"],
+                        description=tpl_dict.get("description", ""),
+                        category=tpl_dict.get("category", "custom"),
+                        icon=tpl_dict.get("icon", ""),
+                        definition=definition,
+                        is_official=tpl_dict.get("is_official", False),
+                        author=tpl_dict.get("author", "user"),
+                    )
+                    _agent_templates[agent_template.id] = agent_template
+                except Exception as e:
+                    logger.error(f"Error loading template: {e}")
+
+            _templates_loaded = True
+            logger.info(f"Loaded {len(_agent_templates)} custom templates from storage")
+        except Exception as e:
+            logger.error(f"Error loading templates: {e}")
+            _templates_loaded = True  # Don't retry on error
+
+    @app.get("/api/templates")
+    async def list_templates():
+        """List all available agent templates."""
+        await _ensure_templates_loaded()
+
+        # Return built-in templates + custom templates
+        templates = list(_agent_templates.values())
+
+        # Add built-in templates
+        builtin_templates = _get_builtin_templates()
+        templates.extend(builtin_templates)
+
+        return [
+            {
+                "id": t.id,
+                "name": t.name,
+                "description": t.description,
+                "category": t.category,
+                "icon": t.icon,
+                "is_official": t.is_official,
+            }
+            for t in templates
+        ]
+
+    @app.get("/api/templates/{template_id}")
+    async def get_template(template_id: str):
+        """Get a template by ID."""
+        await _ensure_templates_loaded()
+
+        # Check custom templates first
+        if template_id in _agent_templates:
+            return _agent_templates[template_id].model_dump()
+
+        # Check built-in templates
+        for t in _get_builtin_templates():
+            if t.id == template_id:
+                return t.model_dump()
+
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    @app.post("/api/templates")
+    async def create_template(template: Dict[str, Any]):
+        """Create a new agent template."""
+        await _ensure_templates_loaded()
+
+        template_id = template.get("id") or str(uuid4())
+
+        definition = BuiltinAgentDefinition(**template.get("definition", {}))
+
+        agent_template = AgentTemplate(
+            id=template_id,
+            name=template["name"],
+            description=template.get("description", ""),
+            category=template.get("category", "custom"),
+            icon=template.get("icon", ""),
+            definition=definition,
+            is_official=False,
+            author=template.get("author", "user"),
+        )
+
+        _agent_templates[template_id] = agent_template
+
+        # Persist to storage
+        try:
+            from ..storage import get_storage_manager
+            storage = get_storage_manager()
+            await storage.save_template(agent_template.model_dump())
+        except Exception as e:
+            logger.error(f"Error saving template: {e}")
+
+        return {"status": "created", "id": template_id}
+
+    @app.delete("/api/templates/{template_id}")
+    async def delete_template(template_id: str):
+        """Delete a custom template."""
+        await _ensure_templates_loaded()
+
+        # Can't delete built-in templates
+        for t in _get_builtin_templates():
+            if t.id == template_id:
+                raise HTTPException(status_code=400, detail="Cannot delete built-in template")
+
+        if template_id not in _agent_templates:
+            raise HTTPException(status_code=404, detail="Template not found")
+
+        del _agent_templates[template_id]
+
+        # Delete from storage
+        try:
+            from ..storage import get_storage_manager
+            storage = get_storage_manager()
+            await storage.delete_template(template_id)
+        except Exception as e:
+            logger.error(f"Error deleting template: {e}")
+
+        return {"status": "deleted", "id": template_id}
+
+    @app.post("/api/workflows/{workflow_id}/agents/from-template")
+    async def create_agent_from_template(workflow_id: str, request: Dict[str, Any]):
+        """Create a new agent from a template."""
+        manager = get_workflow_manager()
+        workflow = await manager.get_workflow(workflow_id)
+
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        template_id = request.get("template_id")
+        if not template_id:
+            raise HTTPException(status_code=400, detail="template_id is required")
+
+        # Find template
+        template = None
+        if template_id in _agent_templates:
+            template = _agent_templates[template_id]
+        else:
+            for t in _get_builtin_templates():
+                if t.id == template_id:
+                    template = t
+                    break
+
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found")
+
+        # Create agent from template
+        name = request.get("name") or template.definition.name
+        parent_id = request.get("parent_id")
+
+        node = AgentNode(
+            name=name,
+            description=template.definition.description,
+            type=AgentType.BUILTIN,
+            config=AgentConfig(
+                model=template.definition.model,
+                temperature=template.definition.temperature,
+                max_tokens=template.definition.max_tokens,
+                builtin_definition=template.definition.model_copy(deep=True),
+            ),
+            parent_id=parent_id,
+        )
+
+        workflow.add_agent(node, parent_id)
+
+        # Persist changes
+        await manager.save_current_state(workflow_id)
+
+        return {
+            "status": "created",
+            "id": node.id,
+            "name": node.name,
+        }
+
+    # ============== Workflow Template Endpoints ==============
+
+    @app.get("/api/workflow-templates")
+    async def list_workflow_templates():
+        """列出所有可用的工作流模板"""
+        templates = _get_builtin_workflow_templates()
+        return [
+            {
+                "id": t.id,
+                "name": t.name,
+                "description": t.description,
+                "category": t.category,
+                "icon": t.icon,
+                "is_official": t.is_official,
+                "agent_count": len(t.agents),
+            }
+            for t in templates
+        ]
+
+    @app.get("/api/workflow-templates/{template_id}")
+    async def get_workflow_template(template_id: str):
+        """获取工作流模板详情"""
+        for t in _get_builtin_workflow_templates():
+            if t.id == template_id:
+                # 丰富 agent 信息
+                agent_details = []
+                for agent_ref in t.agents:
+                    agent_tpl = None
+                    for at in _get_builtin_templates():
+                        if at.id == agent_ref.template_id:
+                            agent_tpl = at
+                            break
+                    agent_details.append({
+                        "ref_id": agent_ref.ref_id,
+                        "template_id": agent_ref.template_id,
+                        "name": agent_ref.name_override or (agent_tpl.name if agent_tpl else "Unknown"),
+                        "description": agent_tpl.description if agent_tpl else "",
+                        "parent_ref": agent_ref.parent_ref,
+                        "icon": agent_tpl.icon if agent_tpl else "",
+                    })
+                return {
+                    "id": t.id,
+                    "name": t.name,
+                    "description": t.description,
+                    "category": t.category,
+                    "icon": t.icon,
+                    "is_official": t.is_official,
+                    "agents": agent_details,
+                }
+
+        raise HTTPException(status_code=404, detail="Workflow template not found")
+
+    @app.post("/api/workflow-templates/{template_id}/create")
+    async def create_workflow_from_template(template_id: str, request: Dict[str, Any] = {}):
+        """从工作流模板一键创建完整工作流"""
+        # 查找工作流模板
+        wf_template = None
+        for t in _get_builtin_workflow_templates():
+            if t.id == template_id:
+                wf_template = t
+                break
+
+        if not wf_template:
+            raise HTTPException(status_code=404, detail="Workflow template not found")
+
+        # 构建 Agent 模板索引
+        agent_tpl_index: Dict[str, AgentTemplate] = {}
+        for at in _get_builtin_templates():
+            agent_tpl_index[at.id] = at
+
+        # 创建工作流
+        wf_name = request.get("name", wf_template.name)
+        wf_desc = request.get("description", wf_template.description)
+
+        manager = get_workflow_manager()
+        workflow = await manager.create_workflow(name=wf_name, description=wf_desc)
+
+        # 追踪 ref_id -> 实际 agent_id 的映射
+        ref_to_id: Dict[str, str] = {}
+
+        # 按依赖顺序创建 Agent（先创建没有 parent 的，再创建有 parent 的）
+        pending = list(wf_template.agents)
+        max_iterations = len(pending) * 2  # 防止死循环
+        iteration = 0
+
+        while pending and iteration < max_iterations:
+            iteration += 1
+            next_pending = []
+
+            for agent_ref in pending:
+                # 如果有 parent_ref，需要先等 parent 创建完成
+                if agent_ref.parent_ref and agent_ref.parent_ref not in ref_to_id:
+                    next_pending.append(agent_ref)
+                    continue
+
+                # 查找对应的 Agent 模板
+                agent_tpl = agent_tpl_index.get(agent_ref.template_id)
+                if not agent_tpl:
+                    logger.error(f"Agent template not found: {agent_ref.template_id}")
+                    continue
+
+                # 确定父节点的实际 ID
+                parent_id = ref_to_id.get(agent_ref.parent_ref) if agent_ref.parent_ref else None
+
+                # 创建 Agent
+                node = AgentNode(
+                    name=agent_ref.name_override or agent_tpl.definition.name,
+                    description=agent_tpl.definition.description,
+                    type=AgentType.BUILTIN,
+                    config=AgentConfig(
+                        model=agent_tpl.definition.model,
+                        temperature=agent_tpl.definition.temperature,
+                        max_tokens=agent_tpl.definition.max_tokens,
+                        builtin_definition=agent_tpl.definition.model_copy(deep=True),
+                    ),
+                    # Root agents use COORDINATOR pattern (run → specialists → integrate)
+                    # Child agents use SEQUENTIAL (simple pass-through)
+                    routing_strategy=RoutingStrategy.COORDINATOR if not agent_ref.parent_ref else RoutingStrategy.SEQUENTIAL,
+                    parent_id=parent_id,
+                )
+
+                workflow.add_agent(node, parent_id)
+                ref_to_id[agent_ref.ref_id] = node.id
+
+            pending = next_pending
+
+        # 持久化
+        await manager.save_current_state(workflow.id)
+
+        return {
+            "status": "created",
+            "workflow_id": workflow.id,
+            "name": workflow.name,
+            "agent_count": len(workflow.tree),
+            "agents": [
+                {"ref_id": ref_id, "agent_id": agent_id}
+                for ref_id, agent_id in ref_to_id.items()
+            ],
+        }
+
     return app
+
+
+def _get_builtin_templates() -> List[AgentTemplate]:
+    """Get built-in agent templates."""
+    from uuid import uuid4
+
+    templates = [
+        AgentTemplate(
+            id="tpl-assistant",
+            name="General Assistant",
+            description="A helpful AI assistant for general conversations and tasks",
+            category="assistant",
+            icon="robot",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="Assistant",
+                description="A helpful AI assistant",
+                model="gpt-4",
+                temperature=0.7,
+                system_prompt="""You are a helpful AI assistant. You provide clear, accurate,
+and helpful responses to user queries. Be concise but thorough.""",
+            ),
+        ),
+        AgentTemplate(
+            id="tpl-coder",
+            name="Code Assistant",
+            description="An AI assistant specialized in programming and code generation",
+            category="specialist",
+            icon="code",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="Code Assistant",
+                description="Helps with programming tasks",
+                model="gpt-4",
+                temperature=0.3,
+                system_prompt="""You are an expert programmer. Help users with:
+- Writing clean, efficient code
+- Debugging issues
+- Explaining code concepts
+- Code reviews and improvements
+
+Always provide working code examples when relevant.""",
+                output_format=OutputFormat(format_type="markdown"),
+            ),
+        ),
+        AgentTemplate(
+            id="tpl-router",
+            name="Task Router",
+            description="Routes user requests to appropriate specialist agents",
+            category="router",
+            icon="share",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="Task Router",
+                description="Routes tasks to specialists",
+                model="gpt-4",
+                temperature=0.2,
+                system_prompt="""You are a task router. Analyze user requests and determine
+which specialist should handle them. Available specialists will be provided in context.
+Respond with the specialist name and a brief handoff message.""",
+            ),
+        ),
+        AgentTemplate(
+            id="tpl-analyst",
+            name="Data Analyst",
+            description="Analyzes data and provides insights",
+            category="specialist",
+            icon="chart",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="Data Analyst",
+                description="Analyzes data and provides insights",
+                model="gpt-4",
+                temperature=0.5,
+                system_prompt="""You are a data analyst. Help users:
+- Understand their data
+- Identify patterns and trends
+- Generate insights
+- Create visualizations descriptions
+
+Be precise with numbers and always cite your sources.""",
+            ),
+        ),
+        AgentTemplate(
+            id="tpl-writer",
+            name="Content Writer",
+            description="Creates and edits written content",
+            category="specialist",
+            icon="edit",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="Content Writer",
+                description="Creates and edits written content",
+                model="gpt-4",
+                temperature=0.8,
+                system_prompt="""You are a professional content writer. Help users:
+- Write compelling copy
+- Edit and improve existing content
+- Adapt tone and style
+- Create various content formats
+
+Focus on clarity, engagement, and the target audience.""",
+            ),
+        ),
+        AgentTemplate(
+            id="tpl-customer-support",
+            name="Customer Support Agent",
+            description="Handles customer inquiries and support requests",
+            category="specialist",
+            icon="headset",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="Support Agent",
+                description="Customer support specialist",
+                model="gpt-4",
+                temperature=0.5,
+                system_prompt="""You are a friendly and professional customer support agent.
+- Listen carefully to customer concerns
+- Provide clear solutions
+- Be empathetic and patient
+- Escalate complex issues when needed
+
+Always maintain a helpful and positive tone.""",
+            ),
+        ),
+        # ============== 旅游业务分析 Agent 模板 ==============
+        AgentTemplate(
+            id="tpl-travel-coordinator",
+            name="旅游顾问主管",
+            description="旅游业务协调员，负责分配任务给专业顾问团队，最终生成规划文档",
+            category="router",
+            icon="compass",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="旅游顾问主管",
+                description="协调旅游规划团队，根据用户需求分配任务，整合专家输出，生成规划文档",
+                model="gpt-4",
+                temperature=0.3,
+                system_prompt="""你是一位经验丰富的旅游顾问主管，负责协调一个专业的旅游规划团队。
+
+## 你的团队成员
+1. **行程规划师** - 负责设计旅行路线和日程安排
+2. **酒店专家** - 负责住宿推荐和预订建议
+3. **美食顾问** - 负责当地美食和餐厅推荐
+4. **预算分析师** - 负责费用估算和省钱建议
+5. **当地文化专家** - 负责文化礼仪和旅行贴士
+
+## 你的工作模式
+你将经历两个阶段：
+
+### 第一阶段：分析需求
+当收到用户的旅行咨询时，你需要：
+1. 理解用户需求（目的地、时间、人数、预算、偏好等）
+2. 简要说明你将如何安排团队协作
+3. 告知用户你正在召集专家团队
+
+### 第二阶段：整合输出
+你会收到各专家的输出（以 "=== XXX 的输出 ===" 格式呈现），此时你需要：
+1. 整合所有专家的建议，形成连贯一致的旅行方案
+2. 解决任何冲突或不一致的地方
+3. 使用 file_write 工具生成完整的规划文档
+4. 向用户呈现最终方案并告知文件保存路径
+
+## 文档生成规则
+调用 file_write 时：
+- 使用相对路径：`旅行规划_目的地_日期.md`
+- 使用 Markdown 格式，结构清晰
+- 包含章节：基本信息、每日行程、住宿推荐、美食推荐、预算明细、文化贴士、出行清单
+
+请用专业、友好的方式与用户沟通，确保提供高质量的旅行建议。""",
+                system_tools=["file_write"],
+                output_format=OutputFormat(format_type="markdown"),
+            ),
+        ),
+        AgentTemplate(
+            id="tpl-travel-itinerary",
+            name="行程规划师",
+            description="专业设计旅行路线和日程安排",
+            category="specialist",
+            icon="map",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="行程规划师",
+                description="设计最优旅行路线和每日行程",
+                model="gpt-4",
+                temperature=0.5,
+                system_prompt="""你是一位专业的行程规划师，擅长设计旅行路线和日程安排。
+
+你的职责：
+1. 根据用户的时间和目的地，规划最优路线
+2. 考虑景点之间的距离和交通方式
+3. 安排合理的游览时间，避免行程过于紧张
+4. 考虑季节、天气、节假日等因素
+5. 提供备选方案以应对意外情况
+
+输出格式：
+- 每天的行程安排（时间、地点、活动）
+- 交通方式建议
+- 预计游览时长
+- 特别提醒事项
+
+请确保行程既充实又轻松，让用户有最佳的旅行体验。""",
+                output_format=OutputFormat(format_type="markdown"),
+            ),
+        ),
+        AgentTemplate(
+            id="tpl-travel-hotel",
+            name="酒店专家",
+            description="提供住宿推荐和预订建议",
+            category="specialist",
+            icon="building",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="酒店专家",
+                description="根据需求推荐最佳住宿选择",
+                model="gpt-4",
+                temperature=0.5,
+                system_prompt="""你是一位酒店住宿专家，熟悉全球各地的住宿选择。
+
+你的职责：
+1. 根据用户预算推荐合适的住宿
+2. 考虑位置便利性（靠近景点、交通枢纽）
+3. 评估酒店设施和服务质量
+4. 提供不同档次的选择（经济型、中档、豪华）
+5. 介绍特色住宿（民宿、度假村、精品酒店）
+
+推荐时需包含：
+- 酒店名称和星级
+- 预估价格区间
+- 位置优势
+- 特色设施
+- 预订建议（最佳预订时间、平台推荐）
+
+请根据用户的具体需求（家庭出游、商务出差、蜜月旅行等）提供个性化建议。""",
+                output_format=OutputFormat(format_type="markdown"),
+            ),
+        ),
+        AgentTemplate(
+            id="tpl-travel-food",
+            name="美食顾问",
+            description="推荐当地美食和特色餐厅",
+            category="specialist",
+            icon="utensils",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="美食顾问",
+                description="发现最佳美食体验和餐厅推荐",
+                model="gpt-4",
+                temperature=0.7,
+                system_prompt="""你是一位美食顾问，对世界各地的美食文化有深入了解。
+
+你的职责：
+1. 推荐目的地必尝的特色美食
+2. 介绍当地知名餐厅和隐藏美食
+3. 考虑用户的口味偏好和饮食限制
+4. 提供不同价位的选择
+5. 分享美食相关的文化背景
+
+推荐内容包括：
+- 必尝美食清单及介绍
+- 推荐餐厅（档次、价位、特色）
+- 当地美食街/夜市推荐
+- 用餐礼仪和点餐技巧
+- 食物过敏/忌口注意事项
+
+请让美食成为旅行中难忘的体验！""",
+                output_format=OutputFormat(format_type="markdown"),
+            ),
+        ),
+        AgentTemplate(
+            id="tpl-travel-budget",
+            name="预算分析师",
+            description="提供详细的费用估算和省钱建议",
+            category="specialist",
+            icon="calculator",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="预算分析师",
+                description="精确估算旅行费用并提供省钱策略",
+                model="gpt-4",
+                temperature=0.3,
+                system_prompt="""你是一位专业的旅行预算分析师，擅长费用估算和理财规划。
+
+你的职责：
+1. 估算各项旅行费用（交通、住宿、餐饮、门票、购物等）
+2. 提供详细的预算清单
+3. 分析不同方案的性价比
+4. 提供省钱技巧和建议
+5. 考虑汇率和支付方式
+
+预算报告包括：
+- 各项费用明细估算
+- 总预算范围（保守/正常/宽裕）
+- 省钱小贴士
+- 推荐的支付方式和货币兑换建议
+- 需要提前预订以获得优惠的项目
+
+请用数据说话，帮助用户做出明智的财务决策。""",
+                output_format=OutputFormat(format_type="markdown"),
+            ),
+        ),
+        AgentTemplate(
+            id="tpl-travel-culture",
+            name="当地文化专家",
+            description="提供目的地文化背景和旅行贴士",
+            category="specialist",
+            icon="globe",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="当地文化专家",
+                description="分享文化知识和实用旅行贴士",
+                model="gpt-4",
+                temperature=0.6,
+                system_prompt="""你是一位文化研究专家，对世界各地的历史文化有深入了解。
+
+你的职责：
+1. 介绍目的地的历史文化背景
+2. 说明当地的风俗习惯和礼仪禁忌
+3. 提供语言沟通小贴士
+4. 分享安全注意事项
+5. 推荐文化体验活动
+
+内容包括：
+- 历史文化简介
+- 必知的礼仪和禁忌
+- 常用当地语言/短语
+- 安全提醒和紧急联系方式
+- 推荐的文化体验（节日、表演、手工艺等）
+- 购物和纪念品建议
+
+帮助用户做一个有文化素养的旅行者！""",
+                output_format=OutputFormat(format_type="markdown"),
+            ),
+        ),
+        # ============== 软件开发团队 Agent 模板 ==============
+        AgentTemplate(
+            id="tpl-dev-lead",
+            name="技术负责人",
+            description="软件开发团队负责人，协调开发工作",
+            category="router",
+            icon="crown",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="技术负责人",
+                description="协调软件开发团队，分配和审核任务",
+                model="gpt-4",
+                temperature=0.3,
+                system_prompt="""你是一位经验丰富的技术负责人，管理一个高效的软件开发团队。
+
+你的团队成员包括：
+1. 架构师 - 负责系统设计和技术选型
+2. 前端开发 - 负责用户界面开发
+3. 后端开发 - 负责服务端逻辑和API
+4. 测试工程师 - 负责质量保证
+5. DevOps工程师 - 负责部署和运维
+
+工作职责：
+1. 分析需求，拆解任务
+2. 分配工作给合适的团队成员
+3. 协调各角色之间的协作
+4. 把控项目进度和质量
+5. 解决技术难题和冲突
+
+请确保团队高效协作，交付高质量的软件产品。""",
+                output_format=OutputFormat(format_type="markdown"),
+            ),
+        ),
+        AgentTemplate(
+            id="tpl-dev-architect",
+            name="系统架构师",
+            description="负责系统设计和技术选型",
+            category="specialist",
+            icon="sitemap",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="系统架构师",
+                description="设计可扩展、高可用的系统架构",
+                model="gpt-4",
+                temperature=0.4,
+                system_prompt="""你是一位资深系统架构师，擅长设计复杂软件系统。
+
+你的职责：
+1. 分析业务需求，设计系统架构
+2. 技术选型（编程语言、框架、数据库等）
+3. 设计API接口和数据模型
+4. 考虑性能、安全、可扩展性
+5. 编写技术设计文档
+
+设计原则：
+- SOLID原则
+- 微服务 vs 单体架构权衡
+- 云原生设计
+- 安全最佳实践
+
+请提供清晰的架构图和详细的技术说明。""",
+                output_format=OutputFormat(format_type="markdown"),
+            ),
+        ),
+        AgentTemplate(
+            id="tpl-dev-frontend",
+            name="前端开发工程师",
+            description="负责用户界面和交互开发",
+            category="specialist",
+            icon="desktop",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="前端开发工程师",
+                description="构建优秀的用户界面和体验",
+                model="gpt-4",
+                temperature=0.4,
+                system_prompt="""你是一位专业的前端开发工程师，精通现代前端技术栈。
+
+技术专长：
+- React/Vue/Angular
+- TypeScript
+- CSS/Tailwind/Styled Components
+- 状态管理（Redux/Zustand/Pinia）
+- 前端工程化（Vite/Webpack）
+
+你的职责：
+1. 实现用户界面设计
+2. 开发交互功能
+3. 优化性能和用户体验
+4. 编写可维护的代码
+5. 组件化和模块化开发
+
+请确保代码质量、可访问性和跨浏览器兼容性。""",
+                output_format=OutputFormat(format_type="markdown"),
+            ),
+        ),
+        AgentTemplate(
+            id="tpl-dev-backend",
+            name="后端开发工程师",
+            description="负责服务端逻辑和API开发",
+            category="specialist",
+            icon="server",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="后端开发工程师",
+                description="构建稳定高效的后端服务",
+                model="gpt-4",
+                temperature=0.3,
+                system_prompt="""你是一位资深后端开发工程师，擅长构建高性能服务。
+
+技术专长：
+- Python/Node.js/Go/Java
+- RESTful API / GraphQL
+- 数据库（PostgreSQL/MongoDB/Redis）
+- 消息队列（RabbitMQ/Kafka）
+- 微服务架构
+
+你的职责：
+1. 设计和实现API接口
+2. 编写业务逻辑
+3. 数据库设计和优化
+4. 性能调优
+5. 安全防护
+
+请确保代码健壮、可测试、有良好的错误处理。""",
+                output_format=OutputFormat(format_type="markdown"),
+            ),
+        ),
+        AgentTemplate(
+            id="tpl-dev-qa",
+            name="测试工程师",
+            description="负责软件质量保证",
+            category="specialist",
+            icon="bug",
+            is_official=True,
+            definition=BuiltinAgentDefinition(
+                name="测试工程师",
+                description="确保软件质量和可靠性",
+                model="gpt-4",
+                temperature=0.3,
+                system_prompt="""你是一位专业的测试工程师，致力于软件质量保证。
+
+测试专长：
+- 单元测试/集成测试/E2E测试
+- 测试框架（Jest/Pytest/Cypress）
+- 性能测试/压力测试
+- 安全测试
+- 自动化测试
+
+你的职责：
+1. 制定测试计划和策略
+2. 编写测试用例
+3. 执行测试并记录结果
+4. 报告和追踪缺陷
+5. 持续改进测试流程
+
+请确保全面覆盖，发现潜在问题。""",
+                output_format=OutputFormat(format_type="markdown"),
+            ),
+        ),
+    ]
+
+    return templates
+
+
+# ============== 工作流模板 ==============
+
+class WorkflowTemplateAgent(BaseModel):
+    """工作流模板中的 Agent 定义"""
+    template_id: str  # 引用的 Agent 模板 ID
+    name_override: Optional[str] = None  # 可选的名称覆盖
+    parent_ref: Optional[str] = None  # 父节点引用（使用 ref_id）
+    ref_id: str  # 本节点的引用 ID，用于建立父子关系
+
+
+class WorkflowTemplate(BaseModel):
+    """工作流模板定义"""
+    id: str
+    name: str
+    description: str
+    category: str
+    icon: str
+    is_official: bool = True
+    agents: List[WorkflowTemplateAgent]  # 包含的 Agent 列表
+
+
+def _get_builtin_workflow_templates() -> List[WorkflowTemplate]:
+    """获取内置的工作流模板"""
+    return [
+        WorkflowTemplate(
+            id="wf-tpl-travel-team",
+            name="旅游规划团队",
+            description="完整的旅游业务分析团队，包含6位专业顾问协作完成旅行规划",
+            category="travel",
+            icon="plane",
+            is_official=True,
+            agents=[
+                WorkflowTemplateAgent(
+                    ref_id="coordinator",
+                    template_id="tpl-travel-coordinator",
+                    parent_ref=None,
+                ),
+                WorkflowTemplateAgent(
+                    ref_id="itinerary",
+                    template_id="tpl-travel-itinerary",
+                    parent_ref="coordinator",
+                ),
+                WorkflowTemplateAgent(
+                    ref_id="hotel",
+                    template_id="tpl-travel-hotel",
+                    parent_ref="coordinator",
+                ),
+                WorkflowTemplateAgent(
+                    ref_id="food",
+                    template_id="tpl-travel-food",
+                    parent_ref="coordinator",
+                ),
+                WorkflowTemplateAgent(
+                    ref_id="budget",
+                    template_id="tpl-travel-budget",
+                    parent_ref="coordinator",
+                ),
+                WorkflowTemplateAgent(
+                    ref_id="culture",
+                    template_id="tpl-travel-culture",
+                    parent_ref="coordinator",
+                ),
+            ],
+        ),
+        WorkflowTemplate(
+            id="wf-tpl-dev-team",
+            name="软件开发团队",
+            description="完整的软件开发团队，包含技术负责人和各专业工程师",
+            category="development",
+            icon="laptop-code",
+            is_official=True,
+            agents=[
+                WorkflowTemplateAgent(
+                    ref_id="lead",
+                    template_id="tpl-dev-lead",
+                    parent_ref=None,
+                ),
+                WorkflowTemplateAgent(
+                    ref_id="architect",
+                    template_id="tpl-dev-architect",
+                    parent_ref="lead",
+                ),
+                WorkflowTemplateAgent(
+                    ref_id="frontend",
+                    template_id="tpl-dev-frontend",
+                    parent_ref="lead",
+                ),
+                WorkflowTemplateAgent(
+                    ref_id="backend",
+                    template_id="tpl-dev-backend",
+                    parent_ref="lead",
+                ),
+                WorkflowTemplateAgent(
+                    ref_id="qa",
+                    template_id="tpl-dev-qa",
+                    parent_ref="lead",
+                ),
+            ],
+        ),
+        WorkflowTemplate(
+            id="wf-tpl-content-team",
+            name="内容创作团队",
+            description="内容策划、写作、审核的完整团队",
+            category="content",
+            icon="pen-fancy",
+            is_official=True,
+            agents=[
+                WorkflowTemplateAgent(
+                    ref_id="editor",
+                    template_id="tpl-router",
+                    name_override="内容主编",
+                    parent_ref=None,
+                ),
+                WorkflowTemplateAgent(
+                    ref_id="writer",
+                    template_id="tpl-writer",
+                    parent_ref="editor",
+                ),
+                WorkflowTemplateAgent(
+                    ref_id="analyst",
+                    template_id="tpl-analyst",
+                    name_override="内容分析师",
+                    parent_ref="editor",
+                ),
+            ],
+        ),
+    ]
+
+
+# Import uuid for templates
+from uuid import uuid4
 
 
 # Create default app instance

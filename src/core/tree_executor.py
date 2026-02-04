@@ -418,6 +418,9 @@ class TreeExecutor:
         elif strategy == RoutingStrategy.HIERARCHICAL:
             return await self._route_hierarchical(children, context, parent_response)
 
+        elif strategy == RoutingStrategy.COORDINATOR:
+            return await self._route_coordinator(node, children, context, parent_response)
+
         else:
             # Default to sequential
             return await self._route_sequential(children, context)
@@ -533,6 +536,72 @@ class TreeExecutor:
         # Execute in parallel
         responses = await self._route_parallel(children, context)
         return responses
+
+    async def _route_coordinator(
+        self,
+        node: AgentNode,
+        children: List[AgentNode],
+        context: ExecutionContext,
+        parent_response: AgentResponse,
+    ) -> List[AgentResponse]:
+        """
+        Coordinator pattern: Parent agent coordinates specialist children.
+
+        Flow:
+        1. Parent (coordinator) runs first - already done before this method
+        2. All children (specialists) run in parallel
+        3. Parent runs AGAIN to integrate all specialist outputs
+        4. Return the integrated response
+
+        This enables true multi-agent collaboration where the coordinator
+        can see and integrate all specialist outputs.
+        """
+        logger.info(f"Coordinator pattern: {node.name} coordinating {len(children)} specialists")
+
+        # Step 1: Run all specialists in parallel
+        specialist_responses = await self._route_parallel(children, context)
+
+        # Step 2: Build integration prompt with all specialist outputs
+        integration_messages = []
+
+        # Add a system message explaining the integration task
+        integration_messages.append(ChatMessage(
+            role=MessageRole.SYSTEM,
+            content=(
+                "Below are the outputs from your specialist team members. "
+                "Please integrate their inputs into a comprehensive, coherent response. "
+                "Make sure to:\n"
+                "1. Synthesize all specialist insights\n"
+                "2. Resolve any conflicts or inconsistencies\n"
+                "3. Present a unified, well-structured final response\n"
+                "4. If you have tools available (like file_write), use them to complete your task."
+            ),
+        ))
+
+        # Add each specialist's output
+        for i, (child, response) in enumerate(zip(children, specialist_responses)):
+            if response.messages:
+                specialist_output = "\n".join(m.content for m in response.messages if m.content)
+                integration_messages.append(ChatMessage(
+                    role=MessageRole.USER,
+                    content=f"=== {child.name} 的输出 ===\n{specialist_output}",
+                ))
+
+        # Step 3: Invoke the coordinator again to integrate
+        logger.info(f"Coordinator {node.name} integrating {len(specialist_responses)} specialist outputs")
+
+        # Add integration messages to context
+        for msg in integration_messages:
+            context.add_message(msg)
+
+        # Re-invoke the coordinator to integrate
+        integration_response = await self._invoke_agent(node, context)
+
+        # The integration response is the final output
+        # We return both specialist responses (for history) and the integration response
+        all_responses = specialist_responses + [integration_response]
+
+        return all_responses
 
     def _aggregate_responses(
         self,

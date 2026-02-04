@@ -1,0 +1,71 @@
+{
+  "id": "ed039177-ebe6-41d5-a121-c8da3309e18f",
+  "name": "test",
+  "description": "",
+  "config": {
+    "id": "ed039177-ebe6-41d5-a121-c8da3309e18f",
+    "name": "test",
+    "description": "",
+    "root_agent_id": "",
+    "global_context": {},
+    "max_total_depth": 10,
+    "total_timeout": 300.0,
+    "execution_mode": "async",
+    "error_handling": "fail_fast",
+    "created_at": "2026-02-03 15:14:42.526691",
+    "updated_at": "2026-02-03 15:14:42.526697",
+    "version": "1.0.0"
+  },
+  "tree": {
+    "root_id": "",
+    "nodes": {
+      "29bb8020-a2f1-4f5d-a63e-e5635ca457dd": {
+        "id": "29bb8020-a2f1-4f5d-a63e-e5635ca457dd",
+        "name": "test",
+        "description": "test",
+        "type": "builtin",
+        "config": {
+          "model": "gpt-4",
+          "temperature": 0.7,
+          "max_tokens": 4096,
+          "native_config": null,
+          "coze_config": null,
+          "dify_config": null,
+          "doubao_config": null,
+          "autogen_config": null,
+          "builtin_definition": null,
+          "mcp_servers": [],
+          "skills": [],
+          "rag_sources": []
+        },
+        "parent_id": null,
+        "children": [],
+        "plugins": [],
+        "routing_strategy": "sequential",
+        "max_depth": 5,
+        "timeout": 60.0,
+        "retry_policy": {
+          "max_retries": 3,
+          "initial_delay": 1.0,
+          "max_delay": 60.0,
+          "exponential_base": 2.0,
+          "retry_on_errors": [
+            "timeout",
+            "rate_limit",
+            "server_error"
+          ]
+        },
+        "routing_conditions": {},
+        "enabled": true,
+        "metadata": {}
+      }
+    }
+  },
+  "state": "created",
+  "executions": [],
+  "created_at": "2026-02-03T15:14:42.526818",
+  "updated_at": "2026-02-03T15:14:42.541644",
+  "_id": "ed039177-ebe6-41d5-a121-c8da3309e18f",
+  "_updated_at": "2026-02-03T15:14:42.541896",
+  "_created_at": "2026-02-03T15:14:42.541896"
+}

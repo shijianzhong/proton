@@ -1,0 +1,65 @@
+.app {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 220px;
+  background-color: var(--color-background);
+  border-right: 1px solid var(--color-primary);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 0;
+}
+
+.header {
+  padding: 0 24px;
+  margin-bottom: 32px;
+}
+
+.title {
+  font-family: var(--font-family-heading);
+  font-size: 1.25rem;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  padding: 12px 24px;
+  cursor: pointer;
+  font-family: var(--font-family-body);
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  border-left: 3px solid transparent;
+  transition: all var(--transition-duration) ease;
+}
+
+.navItem:hover {
+  background-color: var(--color-primary);
+  color: var(--color-text);
+}
+
+.navItemSelected {
+  color: var(--color-text);
+  border-left-color: var(--color-cta);
+  background-color: var(--color-primary);
+}
+
+.content {
+  flex: 1;
+  padding: 48px;
+  background-color: var(--color-background); /* Or a slightly lighter shade if needed */
+  overflow-y: auto;
+}
+
+.placeholder {
+    color: var(--color-text-muted);
+}

@@ -1,3 +1,28 @@
+/* Import from design system:
+--  COLORS:
+--    Primary:    #1E293B
+--    Secondary:  #334155
+--    CTA:        #22C55E
+--    Background: #0F172A
+--    Text:       #F8FAFC
+--  TYPOGRAPHY: Poppins / Open Sans
+*/
+
+:root {
+  --font-family-heading: 'Poppins', sans-serif;
+  --font-family-body: 'Open Sans', sans-serif;
+
+  --color-primary: #1E293B;
+  --color-secondary: #334155;
+  --color-cta: #22C55E;
+  --color-background: #0F172A;
+  --color-text: #F8FAFC;
+  --color-text-muted: #94a3b8; /* slate-400, good for muted text */
+
+  /* Effects */
+  --transition-duration: 200ms;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -5,21 +30,69 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: var(--font-family-body);
+  background-color: var(--color-background);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
-.ant-layout-header {
-  background: #001529;
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-family-heading);
 }
 
+/* React Flow Overrides */
 .react-flow__node {
   cursor: pointer;
+  background-color: var(--color-primary);
+  border: 1px solid var(--color-secondary);
+  border-radius: 8px;
+  transition: box-shadow var(--transition-duration) ease-in-out, transform var(--transition-duration) ease-in-out;
 }
 
 .react-flow__node:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+.react-flow__edge-path {
+    stroke: var(--color-secondary);
+}
+
+/* Cleanup Ant Design leftover if any */
+
+.ant-layout-header {
+
+  background: var(--color-background) !important;
+
+  border-bottom: 1px solid var(--color-primary);
+
+}
+
+
+
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+
+  *::before,
+
+  *::after {
+
+    animation-duration: 0.01ms !important;
+
+    animation-iteration-count: 1 !important;
+
+    transition-duration: 0.01ms !important;
+
+    scroll-behavior: auto !important;
+
+  }
+
 }

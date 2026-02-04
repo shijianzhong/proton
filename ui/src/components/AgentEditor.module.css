@@ -1,0 +1,174 @@
+.drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 720px;
+    height: 100%;
+    background-color: var(--color-primary);
+    border-left: 1px solid var(--color-secondary);
+    box-shadow: -5px 0 25px rgba(0,0,0,0.3);
+    transform: translateX(100%);
+    transition: transform 0.3s ease-in-out;
+    display: flex;
+    flex-direction: column;
+    z-index: 900;
+}
+
+.drawerVisible {
+    transform: translateX(0);
+}
+
+.drawerHeader {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--color-secondary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.drawerTitle {
+    font-family: var(--font-family-heading);
+    font-size: 1.25rem;
+    margin: 0;
+}
+
+.drawerBody {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 24px;
+}
+
+.drawerFooter {
+    padding: 16px 24px;
+    border-top: 1px solid var(--color-secondary);
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+/* Tabs */
+.tabNav {
+    display: flex;
+    border-bottom: 1px solid var(--color-secondary);
+    margin-bottom: 24px;
+}
+
+.tabButton {
+    padding: 12px 20px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    font-weight: 600;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.tabButton:hover {
+    color: var(--color-text);
+}
+
+.tabButtonActive {
+    color: var(--color-cta);
+    border-bottom-color: var(--color-cta);
+}
+
+.tabContent {
+    display: none;
+}
+
+.tabContentActive {
+    display: block;
+}
+
+/* Form elements */
+.formSection {
+    margin-bottom: 24px;
+    border-bottom: 1px dashed var(--color-secondary);
+    padding-bottom: 24px;
+}
+.formSection:last-child {
+    border-bottom: none;
+}
+
+/* Tool List */
+.toolCard {
+    background-color: var(--color-background);
+    border: 1px solid var(--color-secondary);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+}
+.toolHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.toolTitle {
+    font-weight: 600;
+    font-family: var(--font-family-heading);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.toolDescription {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+}
+
+.divider {
+    border: 0;
+    border-top: 1px solid var(--color-secondary);
+    margin: 24px 0;
+}
+
+/* Chat Interface */
+.chatContainer {
+    display: flex;
+    flex-direction: column;
+    height: 500px;
+}
+
+.chatMessages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    background: #0d0d1a;
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+
+.chatBubble {
+    max-width: 80%;
+    padding: 10px 14px;
+    color: #fff;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.chatBubbleUser {
+    border-radius: 16px 16px 4px 16px;
+    background: var(--color-cta, #6366f1);
+}
+
+.chatBubbleAssistant {
+    border-radius: 16px 16px 16px 4px;
+    background: #1e1e3f;
+}
+
+.thinkingIndicator {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}

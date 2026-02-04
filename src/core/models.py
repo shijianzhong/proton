@@ -11,6 +11,7 @@ from datetime import datetime
 class AgentType(str, Enum):
     """Supported agent types."""
     NATIVE = "native"          # Built with agent-framework directly
+    BUILTIN = "builtin"        # Built-in agent with visual editing
     COZE = "coze"              # Coze platform agent
     DIFY = "dify"              # Dify platform agent
     DOUBAO = "doubao"          # Doubao (豆包) platform agent
@@ -27,6 +28,7 @@ class RoutingStrategy(str, Enum):
     HIERARCHICAL = "hierarchical"      # Decompose and aggregate
     ROUND_ROBIN = "round_robin"        # Distribute evenly
     LOAD_BALANCED = "load_balanced"    # Based on agent load
+    COORDINATOR = "coordinator"        # Coordinator pattern: parent → children → parent integrates
 
 
 class ExecutionMode(str, Enum):
@@ -64,6 +66,187 @@ class SkillConfig(BaseModel):
     function_name: str                      # Function name in module
     parameters_schema: Optional[Dict[str, Any]] = None
     approval_required: bool = False
+
+
+# ============== Built-in Tool Definitions ==============
+
+class ToolParameterType(str, Enum):
+    """Parameter types for built-in tools."""
+    STRING = "string"
+    INTEGER = "integer"
+    NUMBER = "number"
+    BOOLEAN = "boolean"
+    ARRAY = "array"
+    OBJECT = "object"
+
+
+class ToolParameter(BaseModel):
+    """Definition of a tool parameter."""
+    name: str
+    type: ToolParameterType = ToolParameterType.STRING
+    description: str = ""
+    required: bool = True
+    default: Optional[Any] = None
+    enum: Optional[List[str]] = None  # For string type with choices
+    items_type: Optional[ToolParameterType] = None  # For array type
+
+
+class BuiltinToolDefinition(BaseModel):
+    """
+    Definition for a built-in tool that can be created in the UI.
+
+    Built-in tools can be:
+    - HTTP API calls
+    - Code execution (sandboxed)
+    - Data transformations
+    - Custom logic
+    """
+    name: str
+    description: str
+    tool_type: str = "http"  # http, code, transform, composite
+    parameters: List[ToolParameter] = Field(default_factory=list)
+
+    # For HTTP tools
+    http_method: str = "GET"
+    http_url: str = ""
+    http_headers: Dict[str, str] = Field(default_factory=dict)
+    http_body_template: Optional[str] = None  # JSON template with {{param}} placeholders
+
+    # For code tools (Python code executed in sandbox)
+    code: Optional[str] = None
+    code_language: str = "python"
+
+    # For transform tools
+    input_mapping: Optional[Dict[str, str]] = None
+    output_mapping: Optional[Dict[str, str]] = None
+
+    # Execution settings
+    timeout: float = 30.0
+    retry_count: int = 0
+    approval_required: bool = False
+
+
+# ============== Prompt Template System ==============
+
+class PromptVariable(BaseModel):
+    """A variable that can be used in prompt templates."""
+    name: str
+    description: str = ""
+    type: ToolParameterType = ToolParameterType.STRING
+    default: Optional[str] = None
+    required: bool = False
+
+
+class PromptTemplate(BaseModel):
+    """
+    A reusable prompt template with variables.
+
+    Templates support:
+    - Variable interpolation: {{variable_name}}
+    - Conditional sections: {% if condition %}...{% endif %}
+    - Loops: {% for item in items %}...{% endfor %}
+    """
+    name: str
+    description: str = ""
+    template: str  # The actual prompt template
+    variables: List[PromptVariable] = Field(default_factory=list)
+    category: str = "general"  # general, system, task, output
+
+
+class OutputFormat(BaseModel):
+    """Defines expected output format from an agent."""
+    format_type: str = "text"  # text, json, markdown, structured
+    json_schema: Optional[Dict[str, Any]] = None  # For json format
+    structured_fields: Optional[List[Dict[str, Any]]] = None  # For structured format
+    example: Optional[str] = None
+
+
+# ============== Built-in Agent Definition ==============
+
+class BuiltinAgentDefinition(BaseModel):
+    """
+    Complete definition for a built-in agent that can be visually edited.
+
+    This represents an agent that is fully configured within the platform,
+    not relying on external services like Coze or Dify.
+    """
+    # Basic info
+    name: str
+    description: str = ""
+    avatar: Optional[str] = None  # URL or base64 image
+    category: str = "general"  # general, assistant, specialist, router
+
+    # Model configuration
+    provider: str = "openai"  # openai, azure, anthropic, ollama, local
+    model: str = "gpt-4"
+    base_url: Optional[str] = None  # Custom API base URL
+    api_key: Optional[str] = None  # API key (stored securely)
+    temperature: float = 0.7
+    max_tokens: int = 4096
+    top_p: float = 1.0
+    frequency_penalty: float = 0.0
+    presence_penalty: float = 0.0
+
+    # Prompts
+    system_prompt: str = ""
+    task_prompt_template: Optional[str] = None
+    output_instructions: Optional[str] = None
+
+    # Prompt templates (reusable)
+    prompt_templates: List[PromptTemplate] = Field(default_factory=list)
+
+    # Output format
+    output_format: Optional[OutputFormat] = None
+
+    # Built-in tools
+    builtin_tools: List[BuiltinToolDefinition] = Field(default_factory=list)
+
+    # System tools (file, shell, web operations)
+    system_tools: List[str] = Field(default_factory=list)  # List of enabled system tool names
+
+    # Knowledge/Context
+    knowledge_base: Optional[str] = None  # RAG source reference
+    context_window_strategy: str = "sliding"  # sliding, summary, full
+    max_context_messages: int = 20
+
+    # Behavior settings
+    streaming_enabled: bool = True
+    tool_choice: str = "auto"  # auto, none, required
+    parallel_tool_calls: bool = True
+
+    # Safety settings
+    content_filter_enabled: bool = True
+    max_output_tokens: int = 4096
+
+    # Metadata
+    tags: List[str] = Field(default_factory=list)
+    version: str = "1.0.0"
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+# ============== Agent Template (for quick creation) ==============
+
+class AgentTemplate(BaseModel):
+    """
+    Pre-defined agent template for quick creation.
+
+    Templates provide starting points for common agent types.
+    """
+    id: str
+    name: str
+    description: str
+    category: str
+    icon: str = ""
+    preview_image: Optional[str] = None
+
+    # The actual agent definition
+    definition: BuiltinAgentDefinition
+
+    # Template metadata
+    popularity: int = 0
+    is_official: bool = False
+    author: str = "system"
 
 
 class RAGSourceConfig(BaseModel):
@@ -163,6 +346,9 @@ class AgentConfig(BaseModel):
     dify_config: Optional[DifyConfig] = None
     doubao_config: Optional[DoubaoConfig] = None
     autogen_config: Optional[AutoGenConfig] = None
+
+    # Built-in agent definition (for visual editing)
+    builtin_definition: Optional[BuiltinAgentDefinition] = None
 
     # Plugins
     mcp_servers: List[MCPServerConfig] = Field(default_factory=list)

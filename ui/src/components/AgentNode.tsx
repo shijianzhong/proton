@@ -1,58 +1,70 @@
 import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import { Tag } from 'antd';
-import { RobotOutlined } from '@ant-design/icons';
+import { FiCpu, FiEdit2, FiTrash2 } from 'react-icons/fi';
+import styles from './AgentNode.module.css';
 
 interface AgentNodeData {
   label: string;
   type: string;
   description?: string;
   routing_strategy?: string;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }
 
-const typeColors: Record<string, string> = {
-  native: 'blue',
-  coze: 'green',
-  dify: 'orange',
-  doubao: 'purple',
-  autogen: 'cyan',
+const typeLabels: Record<string, string> = {
+  builtin: 'Built-in',
+  native: 'Native',
+  coze: 'Coze',
+  dify: 'Dify',
+  doubao: '豆包',
+  autogen: 'AutoGen',
 };
 
 const AgentNode: React.FC<NodeProps<AgentNodeData>> = ({ data, selected }) => {
-  return (
-    <div
-      style={{
-        padding: 10,
-        borderRadius: 8,
-        background: 'white',
-        border: `2px solid ${selected ? '#1890ff' : '#ddd'}`,
-        minWidth: 180,
-        boxShadow: selected ? '0 0 10px rgba(24, 144, 255, 0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
-      }}
-    >
-      <Handle type="target" position={Position.Top} />
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    data.onEdit?.();
+  };
 
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-        <RobotOutlined style={{ marginRight: 8, fontSize: 18 }} />
-        <strong>{data.label}</strong>
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    data.onDelete?.();
+  };
+
+  return (
+    <div className={`${styles.node} ${selected ? styles.selected : ''}`}>
+      <Handle type="target" position={Position.Top} className={styles.handle} />
+
+      <div className={styles.header}>
+        <div className={styles.title}>
+          <FiCpu className={styles.titleIcon} />
+          <strong>{data.label}</strong>
+        </div>
+        <div className={styles.actions}>
+          <button className={styles.actionButton} onClick={handleEdit} title="Edit">
+            <FiEdit2 />
+          </button>
+          <button className={`${styles.actionButton} ${styles.actionButtonDanger}`} onClick={handleDelete} title="Delete">
+            <FiTrash2 />
+          </button>
+        </div>
       </div>
 
-      <div style={{ marginBottom: 8 }}>
-        <Tag color={typeColors[data.type] || 'default'}>{data.type}</Tag>
+      <div className={styles.tags}>
+        <span className={styles.tag}>{typeLabels[data.type] || data.type}</span>
         {data.routing_strategy && (
-          <Tag>{data.routing_strategy}</Tag>
+          <span className={styles.tag}>{data.routing_strategy}</span>
         )}
       </div>
 
       {data.description && (
-        <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
-          {data.description.length > 50
-            ? `${data.description.substring(0, 50)}...`
-            : data.description}
+        <div className={styles.description}>
+          {data.description}
         </div>
       )}
-
-      <Handle type="source" position={Position.Bottom} />
+      
+      <Handle type="source" position={Position.Bottom} className={styles.handle} />
     </div>
   );
 };

@@ -226,7 +226,8 @@ class AgentTree:
         self.nodes[node.id] = node
 
         # Set as root if it's the first node or has no parent
-        if node.is_root and (self.root_id is None or node.id == self.root_id):
+        # Use 'not self.root_id' to handle both None and empty string ""
+        if node.is_root and (not self.root_id or node.id == self.root_id):
             self.root_id = node.id
 
         # Update parent's children list

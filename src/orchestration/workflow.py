@@ -88,7 +88,7 @@ class Workflow:
     def from_config(cls, config: WorkflowConfig) -> "Workflow":
         """Create a workflow from configuration."""
         tree = AgentTree()
-        tree.root_id = config.root_agent_id
+        tree.root_id = config.root_agent_id or None
 
         return cls(
             id=config.id,
@@ -284,6 +284,122 @@ class WorkflowManager:
     def __init__(self):
         self._workflows: Dict[str, Workflow] = {}
         self._lock = asyncio.Lock()
+        self._storage = None
+        self._loaded = False
+
+    async def _ensure_storage(self):
+        """Ensure storage is initialized and data is loaded."""
+        if self._storage is None:
+            from ..storage import get_storage_manager, initialize_storage
+            self._storage = await initialize_storage()
+
+        if not self._loaded:
+            await self._load_all_workflows()
+            self._loaded = True
+
+    async def _load_all_workflows(self):
+        """Load all workflows from storage."""
+        if not self._storage:
+            return
+
+        try:
+            workflow_dicts = await self._storage.list_workflows()
+            for wf_dict in workflow_dicts:
+                workflow = self._workflow_from_dict(wf_dict)
+                if workflow:
+                    self._workflows[workflow.id] = workflow
+            logger.info(f"Loaded {len(self._workflows)} workflows from storage")
+        except Exception as e:
+            logger.error(f"Error loading workflows: {e}")
+
+    async def _save_workflow(self, workflow: Workflow):
+        """Save a workflow to storage."""
+        if self._storage:
+            try:
+                await self._storage.save_workflow(workflow.to_dict())
+            except Exception as e:
+                logger.error(f"Error saving workflow {workflow.id}: {e}")
+
+    def _workflow_from_dict(self, data: Dict[str, Any]) -> Optional[Workflow]:
+        """Reconstruct a workflow from dictionary."""
+        try:
+            config = WorkflowConfig(
+                id=data["id"],
+                name=data["name"],
+                description=data.get("description", ""),
+                root_agent_id=data.get("config", {}).get("root_agent_id", ""),
+            )
+
+            workflow = Workflow.from_config(config)
+
+            # Restore tree
+            tree_data = data.get("tree", {})
+            if tree_data.get("root_id"):
+                workflow.tree.root_id = tree_data["root_id"]
+
+            # Restore nodes
+            for node_data in tree_data.get("nodes", {}).values():
+                node = self._agent_node_from_dict(node_data)
+                if node:
+                    workflow.tree.add_node(node)
+
+            # Restore state
+            if "state" in data:
+                workflow.state = WorkflowState(data["state"])
+
+            # Restore timestamps
+            if "created_at" in data:
+                workflow.created_at = datetime.fromisoformat(data["created_at"])
+            if "updated_at" in data:
+                workflow.updated_at = datetime.fromisoformat(data["updated_at"])
+
+            return workflow
+        except Exception as e:
+            logger.error(f"Error reconstructing workflow: {e}")
+            return None
+
+    def _agent_node_from_dict(self, data: Dict[str, Any]) -> Optional[AgentNode]:
+        """Reconstruct an AgentNode from dictionary."""
+        from ..core.models import AgentType, RoutingStrategy, AgentConfig, BuiltinAgentDefinition
+
+        try:
+            config = None
+            if "config" in data and data["config"]:
+                config_data = data["config"]
+                builtin_def = None
+                if config_data.get("builtin_definition"):
+                    builtin_def = BuiltinAgentDefinition(**config_data["builtin_definition"])
+
+                config = AgentConfig(
+                    model=config_data.get("model", "gpt-4"),
+                    temperature=config_data.get("temperature", 0.7),
+                    max_tokens=config_data.get("max_tokens", 4096),
+                    builtin_definition=builtin_def,
+                )
+
+            node = AgentNode(
+                id=data.get("id"),
+                name=data["name"],
+                description=data.get("description", ""),
+                type=AgentType(data.get("type", "native")),
+                config=config,
+                parent_id=data.get("parent_id"),
+                routing_strategy=RoutingStrategy(data.get("routing_strategy", "sequential")),
+                routing_conditions=data.get("routing_conditions", {}),
+                max_depth=data.get("max_depth", 5),
+                timeout=data.get("timeout", 60.0),
+                enabled=data.get("enabled", True),
+            )
+
+            # Restore children
+            for child_id in data.get("children", []):
+                if child_id not in node.children:
+                    node.children.append(child_id)
+
+            return node
+        except Exception as e:
+            logger.error(f"Error reconstructing agent node: {e}")
+            return None
 
     async def create_workflow(
         self,
@@ -302,6 +418,8 @@ class WorkflowManager:
         Returns:
             Created Workflow
         """
+        await self._ensure_storage()
+
         workflow_id = str(uuid4())
 
         config = WorkflowConfig(
@@ -319,15 +437,20 @@ class WorkflowManager:
         async with self._lock:
             self._workflows[workflow_id] = workflow
 
+        # Persist to storage
+        await self._save_workflow(workflow)
+
         logger.info(f"Created workflow: {workflow_id}")
         return workflow
 
     async def get_workflow(self, workflow_id: str) -> Optional[Workflow]:
         """Get a workflow by ID."""
+        await self._ensure_storage()
         return self._workflows.get(workflow_id)
 
     async def list_workflows(self) -> List[Workflow]:
         """List all workflows."""
+        await self._ensure_storage()
         return list(self._workflows.values())
 
     async def update_workflow(
@@ -336,6 +459,8 @@ class WorkflowManager:
         updates: Dict[str, Any],
     ) -> Optional[Workflow]:
         """Update a workflow."""
+        await self._ensure_storage()
+
         workflow = self._workflows.get(workflow_id)
         if not workflow:
             return None
@@ -346,15 +471,36 @@ class WorkflowManager:
             workflow.description = updates["description"]
 
         workflow.updated_at = datetime.now()
+
+        # Persist to storage
+        await self._save_workflow(workflow)
+
         return workflow
 
     async def delete_workflow(self, workflow_id: str) -> bool:
         """Delete a workflow."""
+        await self._ensure_storage()
+
         async with self._lock:
             if workflow_id in self._workflows:
                 del self._workflows[workflow_id]
+
+                # Delete from storage
+                if self._storage:
+                    await self._storage.delete_workflow(workflow_id)
+
                 logger.info(f"Deleted workflow: {workflow_id}")
                 return True
+        return False
+
+    async def save_current_state(self, workflow_id: str) -> bool:
+        """Save the current state of a workflow to storage."""
+        await self._ensure_storage()
+
+        workflow = self._workflows.get(workflow_id)
+        if workflow:
+            await self._save_workflow(workflow)
+            return True
         return False
 
     async def run_workflow(

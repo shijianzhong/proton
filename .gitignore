@@ -44,3 +44,4 @@ ui/.env
 *.swo
 .DS_Store
 .claude/
+.gemini/
