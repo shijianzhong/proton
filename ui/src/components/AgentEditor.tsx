@@ -902,6 +902,80 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
               {/* Settings Tab */}
               <div className={`${styles.tabContent} ${activeTab === 'settings' ? styles.tabContentActive : ''}`}>
                 <div className={styles.formSection}>
+                  <h4 style={{ marginTop: 0 }}>Routing Strategy</h4>
+                  <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '12px' }}>
+                    How this agent routes tasks to its child agents (only applies if this agent has children)
+                  </p>
+                  <div className={listStyles.formGroup}>
+                    <label className={listStyles.formLabel}>Routing Mode</label>
+                    <select name="routing_strategy" value={formData.routing_strategy || 'sequential'} onChange={handleFormChange} className={listStyles.formInput}>
+                      <option value="sequential">Sequential - Execute children one by one</option>
+                      <option value="parallel">Parallel - Execute all children simultaneously</option>
+                      <option value="conditional">Conditional - Route based on conditions</option>
+                      <option value="handoff">Handoff - Transfer control to specialist</option>
+                      <option value="hierarchical">Hierarchical - Decompose and aggregate</option>
+                      <option value="coordinator">Coordinator - Parent integrates child results</option>
+                      <option value="round_robin">Round Robin - Distribute evenly</option>
+                      <option value="load_balanced">Load Balanced - Based on agent load</option>
+                    </select>
+                  </div>
+
+                  {/* Strategy-specific tips */}
+                  {formData.routing_strategy === 'sequential' && (
+                    <div style={{ padding: '12px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '8px', marginTop: '12px' }}>
+                      <strong style={{ color: '#6366f1' }}>Sequential Mode</strong>
+                      <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: '#aaa' }}>
+                        Children execute one by one. Each child receives the accumulated context from previous children.
+                        Best for: pipelines, step-by-step processing, dependent tasks.
+                      </p>
+                    </div>
+                  )}
+
+                  {formData.routing_strategy === 'parallel' && (
+                    <div style={{ padding: '12px', background: 'rgba(34, 197, 94, 0.1)', borderRadius: '8px', marginTop: '12px' }}>
+                      <strong style={{ color: '#22c55e' }}>Parallel Mode</strong>
+                      <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: '#aaa' }}>
+                        All children execute simultaneously. Results are collected when all complete.
+                        Best for: independent subtasks, faster execution, batch processing.
+                      </p>
+                    </div>
+                  )}
+
+                  {(formData.routing_strategy === 'conditional' || formData.routing_strategy === 'handoff') && (
+                    <div style={{ padding: '12px', background: 'rgba(251, 191, 36, 0.1)', borderRadius: '8px', marginTop: '12px' }}>
+                      <strong style={{ color: '#fbbf24' }}>Conditional/Handoff Mode</strong>
+                      <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: '#aaa' }}>
+                        Routes to specific child based on parent's output content. Configure conditions to match keywords.
+                        Best for: classification, intent routing, specialist delegation.
+                      </p>
+                      <p style={{ margin: '8px 0 0', fontSize: '0.8rem', color: '#888' }}>
+                        Tip: Use parent's system prompt to output specific keywords that match routing conditions.
+                      </p>
+                    </div>
+                  )}
+
+                  {formData.routing_strategy === 'coordinator' && (
+                    <div style={{ padding: '12px', background: 'rgba(168, 85, 247, 0.1)', borderRadius: '8px', marginTop: '12px' }}>
+                      <strong style={{ color: '#a855f7' }}>Coordinator Mode</strong>
+                      <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: '#aaa' }}>
+                        Parent sends task to children, then receives their responses and synthesizes a final answer.
+                        Best for: multi-expert collaboration, consensus building, comprehensive analysis.
+                      </p>
+                    </div>
+                  )}
+
+                  {formData.routing_strategy === 'hierarchical' && (
+                    <div style={{ padding: '12px', background: 'rgba(236, 72, 153, 0.1)', borderRadius: '8px', marginTop: '12px' }}>
+                      <strong style={{ color: '#ec4899' }}>Hierarchical Mode</strong>
+                      <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: '#aaa' }}>
+                        Parent decomposes the task, distributes subtasks to children, and aggregates results.
+                        Best for: complex task decomposition, divide-and-conquer strategies.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className={styles.formSection}>
                   <h4 style={{ marginTop: 0 }}>Execution Settings</h4>
 
                   <div className={listStyles.formGroup} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
