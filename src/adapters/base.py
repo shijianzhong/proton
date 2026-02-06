@@ -199,3 +199,17 @@ async def create_adapter_for_node(node: AgentNode) -> AgentAdapter:
     This can be passed to TreeExecutor as the adapter_factory.
     """
     return await AdapterFactory.create_async(node)
+
+
+def register_default_adapters() -> None:
+    """
+    Register all default adapters.
+
+    Call this during application initialization.
+    """
+    from .workflow import WorkflowAdapter
+
+    # Register workflow adapter for inter-workflow calling
+    AdapterFactory.register(AgentType.WORKFLOW, WorkflowAdapter)
+
+    logger.info("Default adapters registered")

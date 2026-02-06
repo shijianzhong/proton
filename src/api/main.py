@@ -143,6 +143,64 @@ class RegisterRAGRequest(BaseModel):
     agent_id: Optional[str] = None
 
 
+class CopilotChatRequest(BaseModel):
+    """Request to chat with Copilot."""
+    session_id: str
+    message: str
+    stream: bool = True
+
+
+class CopilotConfigRequest(BaseModel):
+    """Request to configure Copilot service."""
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+
+
+class SearchConfigRequest(BaseModel):
+    """Request to configure search providers."""
+    provider: Optional[str] = None  # Default search provider
+    searxng_base_url: Optional[str] = None
+    serper_api_key: Optional[str] = None
+    brave_api_key: Optional[str] = None
+    bing_api_key: Optional[str] = None
+    google_api_key: Optional[str] = None
+    google_cx: Optional[str] = None
+
+
+class EmailConfigRequest(BaseModel):
+    """Request to configure email sending."""
+    preferred_method: Optional[str] = None  # "auto", "resend", "smtp"
+    resend_api_key: Optional[str] = None
+    resend_from: Optional[str] = None
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from: Optional[str] = None
+    smtp_use_tls: Optional[bool] = None
+
+
+class TestEmailRequest(BaseModel):
+    """Request to test email sending."""
+    to: str
+
+
+class PublishRequest(BaseModel):
+    """Request to publish a workflow."""
+    version: str = "1.0.0"
+    description: str = ""
+    tags: List[str] = Field(default_factory=list)
+
+
+class GatewayRequest(BaseModel):
+    """Request for the gateway router."""
+    message: str
+    stream: bool = True
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 # ============== Application ==============
 
 @asynccontextmanager
@@ -1049,6 +1107,482 @@ def create_app() -> FastAPI:
                 {"ref_id": ref_id, "agent_id": agent_id}
                 for ref_id, agent_id in ref_to_id.items()
             ],
+        }
+
+    # ============== Copilot Endpoints ==============
+
+    @app.post("/api/copilot/sessions")
+    async def create_copilot_session():
+        """Create a new copilot session."""
+        from ..copilot import get_copilot_service
+        copilot = get_copilot_service()
+        session = await copilot.create_session()
+        return {"session_id": session.session_id}
+
+    @app.get("/api/copilot/config")
+    async def get_copilot_config():
+        """Get current Copilot configuration."""
+        from ..copilot import get_copilot_service
+        copilot = get_copilot_service()
+        return copilot.get_config()
+
+    @app.post("/api/copilot/config")
+    async def update_copilot_config(request: CopilotConfigRequest):
+        """
+        Update Copilot configuration at runtime.
+
+        Allows configuring:
+        - provider: The LLM provider (openai, zhipu, deepseek, qwen, anthropic, moonshot, yi, baichuan, ollama)
+        - model: The LLM model to use (e.g., gpt-4, glm-4, deepseek-chat)
+        - api_key: API key for the LLM provider
+        - base_url: Base URL for custom/local providers (e.g., http://localhost:11434/v1 for Ollama)
+        """
+        from ..copilot import get_copilot_service
+        copilot = get_copilot_service()
+        copilot.update_config(
+            provider=request.provider,
+            model=request.model,
+            api_key=request.api_key,
+            base_url=request.base_url,
+        )
+        return {
+            "status": "updated",
+            "config": copilot.get_config(),
+        }
+
+    @app.get("/api/copilot/sessions/{session_id}")
+    async def get_copilot_session(session_id: str):
+        """Get session with conversation history."""
+        from ..copilot import get_copilot_service
+        copilot = get_copilot_service()
+        session = await copilot.get_session(session_id)
+
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        return {
+            "session_id": session.session_id,
+            "workflow_id": session.workflow_id,
+            "messages": [
+                {
+                    "role": m.role,
+                    "content": m.content,
+                    "timestamp": m.timestamp.isoformat(),
+                }
+                for m in session.messages
+            ],
+            "created_at": session.created_at.isoformat(),
+            "updated_at": session.updated_at.isoformat(),
+        }
+
+    @app.post("/api/copilot/chat")
+    async def copilot_chat(request: CopilotChatRequest):
+        """Chat with copilot to generate/modify workflow."""
+        from ..copilot import get_copilot_service
+        copilot = get_copilot_service()
+
+        if request.stream:
+            async def generate():
+                async for event in copilot.chat(
+                    request.session_id,
+                    request.message,
+                    stream=True
+                ):
+                    event_data = event.model_dump(exclude_none=True)
+                    # Convert datetime to string
+                    if "timestamp" in event_data:
+                        event_data["timestamp"] = event_data["timestamp"].isoformat()
+                    yield f"data: {json.dumps(event_data, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+        else:
+            result = await copilot.chat_sync(
+                request.session_id,
+                request.message
+            )
+            return result
+
+    # ============== Workflow-level Copilot Config ==============
+
+    @app.get("/api/workflows/{workflow_id}/copilot/config")
+    async def get_workflow_copilot_config(workflow_id: str):
+        """
+        Get Copilot configuration for a specific workflow.
+        Falls back to global config if workflow-specific config doesn't exist.
+        """
+        from ..copilot import get_copilot_service
+        from ..orchestration.workflow import get_workflow_manager
+
+        copilot = get_copilot_service()
+        manager = get_workflow_manager()
+
+        # Get workflow to check if it exists
+        workflow = manager.get_workflow(workflow_id)
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        # Try to get workflow-level config
+        workflow_config = manager.get_workflow_copilot_config(workflow_id)
+
+        if workflow_config:
+            # Return workflow-level config
+            config = copilot.format_config(workflow_config)
+            config['is_workflow_level'] = True
+            return config
+        else:
+            # Return global config as fallback
+            config = copilot.get_config()
+            config['is_workflow_level'] = False
+            return config
+
+    @app.post("/api/workflows/{workflow_id}/copilot/config")
+    async def update_workflow_copilot_config(
+        workflow_id: str,
+        request: CopilotConfigRequest
+    ):
+        """
+        Update Copilot configuration for a specific workflow.
+        This overrides the global configuration for this workflow only.
+        """
+        from ..copilot import get_copilot_service
+        from ..orchestration.workflow import get_workflow_manager
+
+        copilot = get_copilot_service()
+        manager = get_workflow_manager()
+
+        # Get workflow to check if it exists
+        workflow = manager.get_workflow(workflow_id)
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        # Save workflow-level config
+        workflow_config = {
+            'provider': request.provider,
+            'model': request.model,
+            'api_key': request.api_key,
+            'base_url': request.base_url,
+        }
+
+        # Remove None values
+        workflow_config = {k: v for k, v in workflow_config.items() if v is not None}
+
+        manager.set_workflow_copilot_config(workflow_id, workflow_config)
+
+        # Return formatted config
+        config = copilot.format_config(workflow_config)
+        config['is_workflow_level'] = True
+
+        return {
+            "status": "updated",
+            "config": config,
+        }
+
+    @app.delete("/api/workflows/{workflow_id}/copilot/config")
+    async def delete_workflow_copilot_config(workflow_id: str):
+        """
+        Delete workflow-specific Copilot configuration.
+        After deletion, the workflow will use the global configuration.
+        """
+        from ..orchestration.workflow import get_workflow_manager
+
+        manager = get_workflow_manager()
+
+        # Get workflow to check if it exists
+        workflow = manager.get_workflow(workflow_id)
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        manager.delete_workflow_copilot_config(workflow_id)
+
+        return {"status": "deleted"}
+
+    # ============== Search Config Endpoints ==============
+
+    @app.get("/api/search/config")
+    async def get_search_config():
+        """
+        Get current search configuration.
+
+        Returns:
+        - Current provider and configuration status
+        - List of all available providers with their status
+        """
+        from ..tools import get_search_config
+        config = get_search_config()
+        return config.to_dict()
+
+    @app.post("/api/search/config")
+    async def update_search_config(request: SearchConfigRequest):
+        """
+        Update search configuration at runtime.
+
+        Supported providers:
+        - bing: Microsoft Bing (default, works in China, no API key needed)
+        - searxng: Self-hosted meta-search engine (requires base URL)
+        - serper: Google Search API (requires API key)
+        - brave: Brave Search (requires API key)
+        - google: Google Custom Search (requires API key + CX)
+        - duckduckgo: Free fallback
+        """
+        from ..tools import get_search_config
+        config = get_search_config()
+        config.update(
+            provider=request.provider,
+            searxng_base_url=request.searxng_base_url,
+            serper_api_key=request.serper_api_key,
+            brave_api_key=request.brave_api_key,
+            bing_api_key=request.bing_api_key,
+            google_api_key=request.google_api_key,
+            google_cx=request.google_cx,
+        )
+        return {
+            "status": "updated",
+            "config": config.to_dict(),
+        }
+
+    @app.post("/api/search/test")
+    async def test_search(query: str = "AI news", provider: Optional[str] = None):
+        """
+        Test search with the current configuration.
+
+        Args:
+            query: Search query to test
+            provider: Optional specific provider to test
+        """
+        from ..tools import get_system_tool_registry
+        registry = get_system_tool_registry()
+        result = await registry.execute(
+            "web_search",
+            query=query,
+            count=3,
+            locale="zh-CN",
+            provider=provider,
+        )
+        return {"query": query, "provider": provider, "result": result}
+
+    # ============== Email Config Endpoints ==============
+
+    @app.get("/api/email/config")
+    async def get_email_config():
+        """
+        Get current email configuration.
+
+        Returns:
+        - Active email method (resend, smtp, or none)
+        - Configuration status for both Resend API and SMTP
+        """
+        try:
+            from ..tools.email import get_email_config
+            config = get_email_config()
+            return config.to_dict()
+        except ImportError:
+            return {
+                "preferred_method": "auto",
+                "active_method": "none",
+                "resend": {"configured": False, "api_key_preview": "", "from": ""},
+                "smtp": {
+                    "configured": False,
+                    "host": "smtp.gmail.com",
+                    "port": 587,
+                    "user": "",
+                    "password_preview": "",
+                    "from": "",
+                    "use_tls": True,
+                },
+                "error": "Email module not available (missing aiosmtplib dependency)",
+            }
+
+    @app.post("/api/email/config")
+    async def update_email_config(request: EmailConfigRequest):
+        """
+        Update email configuration at runtime.
+
+        Supported methods:
+        - resend: Resend API (recommended for custom domains like Cloudflare)
+        - smtp: Traditional SMTP (Gmail, QQ Mail, 163, etc.)
+        """
+        try:
+            from ..tools.email import get_email_config
+            config = get_email_config()
+            config.update(
+                preferred_method=request.preferred_method,
+                resend_api_key=request.resend_api_key,
+                resend_from=request.resend_from,
+                smtp_host=request.smtp_host,
+                smtp_port=request.smtp_port,
+                smtp_user=request.smtp_user,
+                smtp_password=request.smtp_password,
+                smtp_from=request.smtp_from,
+                smtp_use_tls=request.smtp_use_tls,
+            )
+            return {
+                "status": "updated",
+                "config": config.to_dict(),
+            }
+        except ImportError:
+            raise HTTPException(
+                status_code=500,
+                detail="Email module not available (missing aiosmtplib dependency)"
+            )
+
+    @app.post("/api/email/test")
+    async def test_email(request: TestEmailRequest):
+        """
+        Send a test email to verify configuration.
+
+        Args:
+            to: Email address to send test email to
+        """
+        from ..tools import get_system_tool_registry
+        registry = get_system_tool_registry()
+        result = await registry.execute(
+            "send_email",
+            to=request.to,
+            subject="Proton Email Test",
+            body="This is a test email from Proton Agent Platform.\n\nIf you receive this, your email configuration is working correctly!",
+            html=False,
+        )
+        if result.startswith("Error"):
+            return {"status": "error", "message": result}
+        return {"status": "success", "message": result}
+
+    # ============== Publishing Endpoints ==============
+
+    @app.post("/api/workflows/{workflow_id}/publish")
+    async def publish_workflow(workflow_id: str, request: PublishRequest):
+        """Publish a workflow as an API service."""
+        manager = get_workflow_manager()
+
+        try:
+            result = await manager.publish_workflow(
+                workflow_id,
+                version=request.version,
+                description=request.description,
+                tags=request.tags
+            )
+            return {
+                "workflow_id": workflow_id,
+                "api_key": result.api_key,
+                "version": result.version,
+                "endpoint": f"/api/published/{result.api_key}/run",
+            }
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
+    @app.post("/api/workflows/{workflow_id}/unpublish")
+    async def unpublish_workflow(workflow_id: str):
+        """Unpublish a workflow."""
+        manager = get_workflow_manager()
+        success = await manager.unpublish_workflow(workflow_id)
+
+        if not success:
+            raise HTTPException(status_code=404, detail="Workflow not found or not published")
+
+        return {"status": "unpublished", "workflow_id": workflow_id}
+
+    @app.get("/api/published")
+    async def list_published_workflows():
+        """List all published workflows."""
+        manager = get_workflow_manager()
+        return await manager.list_published()
+
+    @app.post("/api/published/{api_key}/run")
+    async def run_published_workflow(api_key: str, request: RunWorkflowRequest):
+        """Execute a published workflow via API key."""
+        manager = get_workflow_manager()
+        workflow = await manager.get_by_api_key(api_key)
+
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found or not published")
+
+        if request.stream:
+            async def generate():
+                async for event in workflow.run_stream_with_events(request.message):
+                    event_data = event.model_dump(exclude_none=True)
+                    yield f"data: {json.dumps(event_data, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
+        result = await workflow.run(request.message)
+
+        output = None
+        if result.response and result.response.messages:
+            output = "\n".join(m.content for m in result.response.messages)
+
+        return ExecutionResponse(
+            workflow_id=result.workflow_id,
+            execution_id=result.execution_id,
+            state=result.state.value,
+            output=output,
+            error=result.error,
+            duration_ms=result.duration_ms,
+        )
+
+    # ============== Gateway Endpoint ==============
+
+    @app.post("/api/gateway/route")
+    async def gateway_route(request: GatewayRequest):
+        """
+        Unified entry point that routes to appropriate workflow.
+        Uses a router workflow with conditional routing to sub-workflows.
+        """
+        manager = get_workflow_manager()
+        router_workflow = await manager.get_gateway_router()
+
+        if not router_workflow:
+            raise HTTPException(
+                status_code=404,
+                detail="No gateway router configured. Publish a workflow with 'gateway' tag."
+            )
+
+        if request.stream:
+            async def generate():
+                async for event in router_workflow.run_stream_with_events(request.message):
+                    event_data = event.model_dump(exclude_none=True)
+                    yield f"data: {json.dumps(event_data, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
+        result = await router_workflow.run(request.message)
+
+        output = None
+        if result.response and result.response.messages:
+            output = "\n".join(m.content for m in result.response.messages)
+
+        return {
+            "workflow_id": result.workflow_id,
+            "execution_id": result.execution_id,
+            "state": result.state.value,
+            "output": output,
+            "error": result.error,
+            "duration_ms": result.duration_ms,
         }
 
     return app

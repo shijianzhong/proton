@@ -218,6 +218,115 @@ export interface TestAgentResult {
   metadata: any;
 }
 
+// Copilot types
+export interface CopilotMessage {
+  role: string;
+  content: string;
+  timestamp: string;
+}
+
+export interface CopilotConfig {
+  provider: string;
+  model: string;
+  base_url: string | null;
+  api_key_configured: boolean;
+  api_key_preview: string | null;
+  available_models: string[];
+  providers: string[];
+  is_workflow_level?: boolean;  // True if this is workflow-level config
+}
+
+export interface CopilotSession {
+  session_id: string;
+  workflow_id?: string;
+  messages: CopilotMessage[];
+  created_at: string;
+  updated_at: string;
+}
+
+export type CopilotEventType =
+  | 'content'
+  | 'tool_start'
+  | 'tool_result'
+  | 'workflow_created'
+  | 'workflow_updated'
+  | 'complete'
+  | 'error';
+
+export interface CopilotEvent {
+  type: CopilotEventType;
+  delta?: string;
+  tool_name?: string;
+  tool_args?: Record<string, any>;
+  result?: Record<string, any>;
+  workflow_id?: string;
+  error?: string;
+  timestamp?: string;
+}
+
+// Publishing types
+export interface PublishedWorkflow {
+  workflow_id: string;
+  name: string;
+  description: string;
+  version: string;
+  tags: string[];
+  published_at: string;
+  endpoint: string;
+}
+
+export interface PublishResult {
+  workflow_id: string;
+  api_key: string;
+  version: string;
+  endpoint: string;
+}
+
+// Search Config types
+export interface SearchProviderInfo {
+  id: string;
+  name: string;
+  description: string;
+  configured: boolean;
+  requires_api_key: boolean;
+  requires_base_url?: boolean;
+  china_accessible: boolean;
+}
+
+export interface SearchConfig {
+  provider: string;
+  searxng_base_url: string;
+  searxng_configured: boolean;
+  serper_configured: boolean;
+  serper_api_key_preview: string | null;
+  brave_configured: boolean;
+  brave_api_key_preview: string | null;
+  bing_configured: boolean;
+  bing_api_key_preview: string | null;
+  google_configured: boolean;
+  available_providers: SearchProviderInfo[];
+}
+
+// Email Config types
+export interface EmailConfig {
+  preferred_method: string;
+  active_method: string;
+  resend: {
+    configured: boolean;
+    api_key_preview: string;
+    from: string;
+  };
+  smtp: {
+    configured: boolean;
+    host: string;
+    port: number;
+    user: string;
+    password_preview: string;
+    from: string;
+    use_tls: boolean;
+  };
+}
+
 export const api = {
   // Workflows
   async listWorkflows(): Promise<Workflow[]> {
@@ -476,5 +585,373 @@ export const api = {
   }> {
     const response = await client.get('/api/system-tools/categories');
     return response.data;
+  },
+
+  // ============== Copilot API ==============
+
+  async createCopilotSession(): Promise<{ session_id: string }> {
+    const response = await client.post('/api/copilot/sessions');
+    return response.data;
+  },
+
+  async getCopilotConfig(): Promise<CopilotConfig> {
+    const response = await client.get('/api/copilot/config');
+    return response.data;
+  },
+
+  async updateCopilotConfig(config: {
+    provider?: string;
+    model?: string;
+    api_key?: string;
+    base_url?: string;
+  }): Promise<{ status: string; config: CopilotConfig }> {
+    const response = await client.post('/api/copilot/config', config);
+    return response.data;
+  },
+
+  async getWorkflowCopilotConfig(workflowId: string): Promise<CopilotConfig> {
+    const response = await client.get(`/api/workflows/${workflowId}/copilot/config`);
+    return response.data;
+  },
+
+  async updateWorkflowCopilotConfig(
+    workflowId: string,
+    config: {
+      provider?: string;
+      model?: string;
+      api_key?: string;
+      base_url?: string;
+    }
+  ): Promise<{ status: string; config: CopilotConfig }> {
+    const response = await client.post(`/api/workflows/${workflowId}/copilot/config`, config);
+    return response.data;
+  },
+
+  async deleteWorkflowCopilotConfig(workflowId: string): Promise<{ status: string }> {
+    const response = await client.delete(`/api/workflows/${workflowId}/copilot/config`);
+    return response.data;
+  },
+
+  // ============== Search Config API ==============
+
+  async getSearchConfig(): Promise<SearchConfig> {
+    const response = await client.get('/api/search/config');
+    return response.data;
+  },
+
+  async updateSearchConfig(config: {
+    provider?: string;
+    searxng_base_url?: string;
+    serper_api_key?: string;
+    brave_api_key?: string;
+    bing_api_key?: string;
+    google_api_key?: string;
+    google_cx?: string;
+  }): Promise<{ status: string; config: SearchConfig }> {
+    const response = await client.post('/api/search/config', config);
+    return response.data;
+  },
+
+  async testSearch(query: string, provider?: string): Promise<{ query: string; provider: string | null; result: string }> {
+    const params = new URLSearchParams({ query });
+    if (provider) params.append('provider', provider);
+    const response = await client.post(`/api/search/test?${params.toString()}`);
+    return response.data;
+  },
+
+  // ============== Email Config API ==============
+
+  async getEmailConfig(): Promise<EmailConfig> {
+    const response = await client.get('/api/email/config');
+    return response.data;
+  },
+
+  async updateEmailConfig(config: {
+    preferred_method?: string;
+    resend_api_key?: string;
+    resend_from?: string;
+    smtp_host?: string;
+    smtp_port?: number;
+    smtp_user?: string;
+    smtp_password?: string;
+    smtp_from?: string;
+    smtp_use_tls?: boolean;
+  }): Promise<{ status: string; config: EmailConfig }> {
+    const response = await client.post('/api/email/config', config);
+    return response.data;
+  },
+
+  async testEmail(to: string): Promise<{ status: string; message: string }> {
+    const response = await client.post('/api/email/test', { to });
+    return response.data;
+  },
+
+  async getCopilotSession(sessionId: string): Promise<CopilotSession> {
+    const response = await client.get(`/api/copilot/sessions/${sessionId}`);
+    return response.data;
+  },
+
+  /**
+   * Chat with copilot via SSE streaming.
+   * Returns an abort function to cancel the request.
+   */
+  copilotChat(
+    sessionId: string,
+    message: string,
+    onEvent: (event: CopilotEvent) => void,
+    onComplete?: () => void,
+    onError?: (error: Error) => void,
+  ): () => void {
+    const abortController = new AbortController();
+
+    const run = async () => {
+      try {
+        const response = await fetch(`${BASE_URL}/api/copilot/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, message, stream: true }),
+          signal: abortController.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('ReadableStream not supported');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+            const data = trimmed.slice(6);
+            if (data === '[DONE]') {
+              onComplete?.();
+              return;
+            }
+
+            try {
+              const event: CopilotEvent = JSON.parse(data);
+              onEvent(event);
+            } catch {
+              // Skip malformed JSON lines
+            }
+          }
+        }
+
+        onComplete?.();
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+        onError?.(err);
+      }
+    };
+
+    run();
+    return () => abortController.abort();
+  },
+
+  async copilotChatSync(sessionId: string, message: string): Promise<{
+    content: string;
+    tool_results: any[];
+    workflow_id?: string;
+  }> {
+    const response = await client.post('/api/copilot/chat', {
+      session_id: sessionId,
+      message,
+      stream: false,
+    });
+    return response.data;
+  },
+
+  // ============== Publishing API ==============
+
+  async publishWorkflow(
+    workflowId: string,
+    config: { version?: string; description?: string; tags?: string[] }
+  ): Promise<PublishResult> {
+    const response = await client.post(`/api/workflows/${workflowId}/publish`, config);
+    return response.data;
+  },
+
+  async unpublishWorkflow(workflowId: string): Promise<void> {
+    await client.post(`/api/workflows/${workflowId}/unpublish`);
+  },
+
+  async listPublishedWorkflows(): Promise<PublishedWorkflow[]> {
+    const response = await client.get('/api/published');
+    return response.data;
+  },
+
+  async runPublishedWorkflow(apiKey: string, message: string): Promise<ExecutionResult> {
+    const response = await client.post(`/api/published/${apiKey}/run`, {
+      message,
+      stream: false,
+    });
+    return response.data;
+  },
+
+  /**
+   * Run a published workflow with streaming via SSE.
+   * Returns an abort function to cancel the request.
+   */
+  runPublishedWorkflowStream(
+    apiKey: string,
+    message: string,
+    onEvent: (event: ExecutionEvent) => void,
+    onComplete?: () => void,
+    onError?: (error: Error) => void,
+  ): () => void {
+    const abortController = new AbortController();
+
+    const run = async () => {
+      try {
+        const response = await fetch(`${BASE_URL}/api/published/${apiKey}/run`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message, stream: true }),
+          signal: abortController.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('ReadableStream not supported');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+            const data = trimmed.slice(6);
+            if (data === '[DONE]') {
+              onComplete?.();
+              return;
+            }
+
+            try {
+              const event: ExecutionEvent = JSON.parse(data);
+              onEvent(event);
+            } catch {
+              // Skip malformed JSON lines
+            }
+          }
+        }
+
+        onComplete?.();
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+        onError?.(err);
+      }
+    };
+
+    run();
+    return () => abortController.abort();
+  },
+
+  // ============== Gateway API ==============
+
+  async gatewayRoute(message: string): Promise<ExecutionResult> {
+    const response = await client.post('/api/gateway/route', {
+      message,
+      stream: false,
+    });
+    return response.data;
+  },
+
+  /**
+   * Route via gateway with streaming.
+   */
+  gatewayRouteStream(
+    message: string,
+    onEvent: (event: ExecutionEvent) => void,
+    onComplete?: () => void,
+    onError?: (error: Error) => void,
+  ): () => void {
+    const abortController = new AbortController();
+
+    const run = async () => {
+      try {
+        const response = await fetch(`${BASE_URL}/api/gateway/route`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message, stream: true }),
+          signal: abortController.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('ReadableStream not supported');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+            const data = trimmed.slice(6);
+            if (data === '[DONE]') {
+              onComplete?.();
+              return;
+            }
+
+            try {
+              const event: ExecutionEvent = JSON.parse(data);
+              onEvent(event);
+            } catch {
+              // Skip malformed JSON lines
+            }
+          }
+        }
+
+        onComplete?.();
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+        onError?.(err);
+      }
+    };
+
+    run();
+    return () => abortController.abort();
   },
 };

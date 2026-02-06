@@ -9,6 +9,7 @@ Provides:
 
 import logging
 import asyncio
+import secrets
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -23,6 +24,7 @@ from ..core.models import (
     WorkflowConfig,
     ExecutionEvent,
     ExecutionEventType,
+    WorkflowPublishConfig,
 )
 from ..core.agent_node import AgentNode, AgentTree
 from ..core.context import ExecutionContext
@@ -606,6 +608,144 @@ class WorkflowManager:
 
         async for event in workflow.run_stream_with_events(input_message):
             yield event
+
+    # ============== Publishing Methods ==============
+
+    async def publish_workflow(
+        self,
+        workflow_id: str,
+        version: str = "1.0.0",
+        description: str = "",
+        tags: Optional[List[str]] = None,
+    ) -> WorkflowPublishConfig:
+        """
+        Publish a workflow as an API service.
+
+        Args:
+            workflow_id: The workflow to publish
+            version: Version string
+            description: Public description
+            tags: Optional tags
+
+        Returns:
+            WorkflowPublishConfig with API key
+        """
+        await self._ensure_storage()
+
+        workflow = self._workflows.get(workflow_id)
+        if not workflow:
+            raise ValueError(f"Workflow not found: {workflow_id}")
+
+        # Generate API key
+        api_key = f"wf_{secrets.token_urlsafe(32)}"
+
+        # Create publish config
+        publish_config = WorkflowPublishConfig(
+            published=True,
+            version=version,
+            api_key=api_key,
+            description=description or workflow.description,
+            tags=tags or [],
+            published_at=datetime.now(),
+        )
+
+        # Update workflow config
+        workflow.config.publish_config = publish_config
+
+        # Persist
+        await self._save_workflow(workflow)
+
+        logger.info(f"Published workflow {workflow_id} as {api_key}")
+        return publish_config
+
+    async def unpublish_workflow(self, workflow_id: str) -> bool:
+        """
+        Unpublish a workflow.
+
+        Args:
+            workflow_id: The workflow to unpublish
+
+        Returns:
+            True if unpublished successfully
+        """
+        await self._ensure_storage()
+
+        workflow = self._workflows.get(workflow_id)
+        if not workflow:
+            return False
+
+        if workflow.config.publish_config:
+            workflow.config.publish_config.published = False
+            workflow.config.publish_config.api_key = None
+            await self._save_workflow(workflow)
+            logger.info(f"Unpublished workflow {workflow_id}")
+            return True
+
+        return False
+
+    async def get_by_api_key(self, api_key: str) -> Optional[Workflow]:
+        """
+        Get a workflow by its published API key.
+
+        Args:
+            api_key: The API key
+
+        Returns:
+            Workflow if found and published
+        """
+        await self._ensure_storage()
+
+        for workflow in self._workflows.values():
+            pc = workflow.config.publish_config
+            if pc and pc.published and pc.api_key == api_key:
+                return workflow
+
+        return None
+
+    async def list_published(self) -> List[Dict[str, Any]]:
+        """
+        List all published workflows.
+
+        Returns:
+            List of published workflow info
+        """
+        await self._ensure_storage()
+
+        published = []
+        for workflow in self._workflows.values():
+            pc = workflow.config.publish_config
+            if pc and pc.published:
+                published.append({
+                    "workflow_id": workflow.id,
+                    "name": workflow.name,
+                    "description": pc.description,
+                    "version": pc.version,
+                    "tags": pc.tags,
+                    "published_at": pc.published_at.isoformat() if pc.published_at else None,
+                    "endpoint": f"/api/published/{pc.api_key}/run",
+                })
+
+        return published
+
+    async def get_gateway_router(self) -> Optional[Workflow]:
+        """
+        Get the gateway router workflow.
+
+        The gateway router is a special workflow that routes
+        incoming requests to appropriate published workflows.
+
+        Returns:
+            Gateway router workflow if configured
+        """
+        await self._ensure_storage()
+
+        # Look for a workflow tagged as "gateway"
+        for workflow in self._workflows.values():
+            pc = workflow.config.publish_config
+            if pc and pc.published and "gateway" in pc.tags:
+                return workflow
+
+        return None
 
 
 # Global workflow manager instance

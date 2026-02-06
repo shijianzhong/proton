@@ -366,17 +366,17 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
     setChatMessages([]);
   };
 
-  const tabs = ['Basic', 'Model', 'Prompts', 'Tools', 'Output', 'Settings'];
+  const tabs = ['基本', '模型', '提示词', '工具', '输出', '设置'];
 
   if (agentType !== 'builtin') {
     return (
       <div className={`${styles.drawer} ${visible ? styles.drawerVisible : ''}`}>
-        <div className={styles.drawerHeader}><h3 className={styles.drawerTitle}>Agent Configuration</h3></div>
+        <div className={styles.drawerHeader}><h3 className={styles.drawerTitle}>Agent 配置</h3></div>
         <div className={styles.drawerBody}>
-          <p>This agent type ({agentType}) uses external configuration.</p>
-          <p>Please configure it through the corresponding platform.</p>
+          <p>此 Agent 类型 ({agentType}) 使用外部配置。</p>
+          <p>请通过对应平台进行配置。</p>
         </div>
-        <div className={styles.drawerFooter}><button className={listStyles.button} onClick={onClose}>Close</button></div>
+        <div className={styles.drawerFooter}><button className={listStyles.button} onClick={onClose}>关闭</button></div>
       </div>
     );
   }
@@ -385,7 +385,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
     <>
       <div className={`${styles.drawer} ${visible ? styles.drawerVisible : ''}`}>
         <div className={styles.drawerHeader}>
-          <h3 className={styles.drawerTitle}>Agent Editor</h3>
+          <h3 className={styles.drawerTitle}>Agent 编辑器</h3>
         </div>
 
         <div className={styles.drawerBody}>
@@ -393,56 +393,56 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
             {tabs.map(tab => (
               <button
                 key={tab}
-                className={`${styles.tabButton} ${activeTab === tab.toLowerCase() ? styles.tabButtonActive : ''}`}
-                onClick={() => setActiveTab(tab.toLowerCase())}>
+                className={`${styles.tabButton} ${activeTab === ['基本', '模型', '提示词', '工具', '输出', '设置'].indexOf(tab) === ['basic', 'model', 'prompts', 'tools', 'output', 'settings'].indexOf(activeTab) ? styles.tabButtonActive : ''}`}
+                onClick={() => setActiveTab(['basic', 'model', 'prompts', 'tools', 'output', 'settings'][['基本', '模型', '提示词', '工具', '输出', '设置'].indexOf(tab)])}>
                 {tab}
               </button>
             ))}
           </nav>
 
           {loading ? (
-            <p>Loading...</p>
+            <p>加载中...</p>
           ) : (
             <form>
               {/* Basic Tab */}
               <div className={`${styles.tabContent} ${activeTab === 'basic' ? styles.tabContentActive : ''}`}>
                 <div className={styles.formSection}>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Agent Name</label>
+                    <label className={listStyles.formLabel}>Agent 名称</label>
                     <input name="name" value={formData.name || ''} onChange={handleFormChange} className={listStyles.formInput} />
                   </div>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Description</label>
+                    <label className={listStyles.formLabel}>描述</label>
                     <textarea name="description" value={formData.description || ''} onChange={handleFormChange} className={listStyles.formTextarea} rows={3} />
                   </div>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Category</label>
+                    <label className={listStyles.formLabel}>分类</label>
                     <select name="category" value={formData.category || 'general'} onChange={handleFormChange} className={listStyles.formInput}>
-                      <option value="general">General</option>
-                      <option value="assistant">Assistant</option>
-                      <option value="coding">Coding</option>
-                      <option value="analysis">Analysis</option>
-                      <option value="writing">Writing</option>
-                      <option value="customer_service">Customer Service</option>
-                      <option value="router">Router</option>
+                      <option value="general">通用</option>
+                      <option value="assistant">助手</option>
+                      <option value="coding">编程</option>
+                      <option value="analysis">分析</option>
+                      <option value="writing">写作</option>
+                      <option value="customer_service">客服</option>
+                      <option value="router">路由</option>
                     </select>
                   </div>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Avatar URL</label>
+                    <label className={listStyles.formLabel}>头像 URL</label>
                     <input name="avatar" value={formData.avatar || ''} onChange={handleFormChange} className={listStyles.formInput} placeholder="https://..." />
                   </div>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Tags (comma separated)</label>
+                    <label className={listStyles.formLabel}>标签 (逗号分隔)</label>
                     <input
                       name="tags"
                       value={(formData.tags || []).join(', ')}
                       onChange={(e) => setFormData(prev => ({ ...prev, tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) }))}
                       className={listStyles.formInput}
-                      placeholder="tag1, tag2, tag3"
+                      placeholder="标签1, 标签2, 标签3"
                     />
                   </div>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Version</label>
+                    <label className={listStyles.formLabel}>版本</label>
                     <input name="version" value={formData.version || '1.0.0'} onChange={handleFormChange} className={listStyles.formInput} />
                   </div>
                 </div>
@@ -452,7 +452,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
               <div className={`${styles.tabContent} ${activeTab === 'model' ? styles.tabContentActive : ''}`}>
                 <div className={styles.formSection}>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Provider</label>
+                    <label className={listStyles.formLabel}>服务商</label>
                     <select name="provider" value={formData.provider || 'openai'} onChange={handleFormChange} className={listStyles.formInput}>
                       <option value="openai">OpenAI</option>
                       <option value="azure">Azure OpenAI</option>
@@ -463,15 +463,15 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                       <option value="moonshot">Moonshot (Kimi)</option>
                       <option value="yi">零一万物 (Yi)</option>
                       <option value="baichuan">百川 (Baichuan)</option>
-                      <option value="ollama">Ollama (Local)</option>
+                      <option value="ollama">Ollama (本地)</option>
                     </select>
                   </div>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Model</label>
+                    <label className={listStyles.formLabel}>模型</label>
                     <input name="model" value={formData.model || 'gpt-4'} onChange={handleFormChange} className={listStyles.formInput} placeholder="gpt-4, claude-3-opus, etc." />
                   </div>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Base URL</label>
+                    <label className={listStyles.formLabel}>API 地址</label>
                     <input
                       name="base_url"
                       value={formData.base_url || ''}
@@ -490,7 +490,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                         'https://api.example.com/v1'
                       }
                     />
-                    <small style={{ color: '#666' }}>Leave empty to use provider default</small>
+                    <small style={{ color: '#666' }}>留空使用服务商默认地址</small>
                   </div>
                   <div className={listStyles.formGroup}>
                     <label className={listStyles.formLabel}>API Key</label>
@@ -503,18 +503,18 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                       placeholder="sk-..."
                       autoComplete="off"
                     />
-                    <small style={{ color: '#666' }}>Leave empty to use environment variable</small>
+                    <small style={{ color: '#666' }}>留空使用环境变量</small>
                   </div>
                 </div>
 
                 <div className={styles.formSection}>
-                  <h4 style={{ marginTop: 0 }}>Parameters</h4>
+                  <h4 style={{ marginTop: 0 }}>参数设置</h4>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Temperature ({formData.temperature || 0.7})</label>
+                    <label className={listStyles.formLabel}>温度 ({formData.temperature || 0.7})</label>
                     <input type="range" name="temperature" min="0" max="2" step="0.1" value={formData.temperature || 0.7} onChange={handleFormChange} style={{ width: '100%' }} />
                   </div>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Max Tokens</label>
+                    <label className={listStyles.formLabel}>最大 Token 数</label>
                     <input type="number" name="max_tokens" value={formData.max_tokens || 4096} onChange={handleFormChange} className={listStyles.formInput} />
                   </div>
                   <div className={listStyles.formGroup}>
@@ -522,11 +522,11 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                     <input type="range" name="top_p" min="0" max="1" step="0.1" value={formData.top_p || 1.0} onChange={handleFormChange} style={{ width: '100%' }} />
                   </div>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Frequency Penalty ({formData.frequency_penalty || 0})</label>
+                    <label className={listStyles.formLabel}>频率惩罚 ({formData.frequency_penalty || 0})</label>
                     <input type="range" name="frequency_penalty" min="-2" max="2" step="0.1" value={formData.frequency_penalty || 0} onChange={handleFormChange} style={{ width: '100%' }} />
                   </div>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Presence Penalty ({formData.presence_penalty || 0})</label>
+                    <label className={listStyles.formLabel}>存在惩罚 ({formData.presence_penalty || 0})</label>
                     <input type="range" name="presence_penalty" min="-2" max="2" step="0.1" value={formData.presence_penalty || 0} onChange={handleFormChange} style={{ width: '100%' }} />
                   </div>
                 </div>
@@ -536,41 +536,41 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
               <div className={`${styles.tabContent} ${activeTab === 'prompts' ? styles.tabContentActive : ''}`}>
                 <div className={styles.formSection}>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>System Prompt</label>
+                    <label className={listStyles.formLabel}>系统提示词</label>
                     <textarea
                       name="system_prompt"
                       value={formData.system_prompt || ''}
                       onChange={handleFormChange}
                       className={listStyles.formTextarea}
                       rows={10}
-                      placeholder="You are a helpful assistant..."
+                      placeholder="你是一个有帮助的助手..."
                     />
                   </div>
                 </div>
                 <div className={styles.formSection}>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Task Prompt Template</label>
+                    <label className={listStyles.formLabel}>任务提示词模板</label>
                     <textarea
                       name="task_prompt_template"
                       value={formData.task_prompt_template || ''}
                       onChange={handleFormChange}
                       className={listStyles.formTextarea}
                       rows={5}
-                      placeholder="Use {{input}} for user input placeholder"
+                      placeholder="使用 {{input}} 作为用户输入占位符"
                     />
-                    <small style={{ color: '#888' }}>Use {'{{input}}'} to reference user input</small>
+                    <small style={{ color: '#888' }}>使用 {'{{input}}'} 引用用户输入</small>
                   </div>
                 </div>
                 <div className={styles.formSection}>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Output Instructions</label>
+                    <label className={listStyles.formLabel}>输出指令</label>
                     <textarea
                       name="output_instructions"
                       value={formData.output_instructions || ''}
                       onChange={handleFormChange}
                       className={listStyles.formTextarea}
                       rows={4}
-                      placeholder="Instructions for how the agent should format its output..."
+                      placeholder="指定 Agent 输出格式的指令..."
                     />
                   </div>
                 </div>
@@ -595,9 +595,9 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                       marginBottom: '16px',
                       fontSize: '0.85rem',
                     }}>
-                      <strong style={{ color: '#ed8936' }}>Prompt mentions unused tools</strong>
+                      <strong style={{ color: '#ed8936' }}>提示词中提到了未启用的工具</strong>
                       <p style={{ margin: '6px 0 8px', color: '#ccc' }}>
-                        Your prompt references the following tools, but they are not enabled. The agent will not be able to call them:
+                        你的提示词引用了以下工具，但它们尚未启用。Agent 将无法调用这些工具:
                       </p>
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         {mentionedButNotEnabled.map(name => (
@@ -620,7 +620,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                               fontSize: '0.85rem',
                             }}
                           >
-                            + Enable {name}
+                            + 启用 {name}
                           </button>
                         ))}
                       </div>
@@ -631,21 +631,22 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                 {/* System Tools Section */}
                 <div className={styles.formSection}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <h4 style={{ margin: 0 }}>System Tools</h4>
+                    <h4 style={{ margin: 0 }}>系统工具</h4>
                     <span style={{ fontSize: '0.8rem', color: '#888' }}>
-                      {(formData.system_tools || []).length} enabled
+                      已启用 {(formData.system_tools || []).length} 个
                     </span>
                   </div>
                   <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '12px' }}>
-                    Select built-in system tools to enable for this agent (file operations, shell commands, web access, etc.)
+                    选择要为此 Agent 启用的内置系统工具 (文件操作、Shell 命令、网络访问等)
                   </p>
 
                   {systemToolCategories.map((category) => (
                     <div key={category} style={{ marginBottom: '16px' }}>
                       <h5 style={{ margin: '0 0 8px 0', textTransform: 'capitalize', color: '#aaa', fontSize: '0.9rem' }}>
-                        {category === 'filesystem' ? '📁 File System' :
+                        {category === 'filesystem' ? '📁 文件系统' :
                          category === 'shell' ? '🖥️ Shell' :
-                         category === 'web' ? '🌐 Web' :
+                         category === 'web' ? '🌐 网络' :
+                         category === 'communication' ? '📧 通讯' :
                          category}
                       </h5>
                       <div style={{ display: 'grid', gap: '8px' }}>
@@ -679,12 +680,12 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                                   <span>{tool.name}</span>
                                   {tool.is_dangerous && (
                                     <span style={{ fontSize: '0.7rem', padding: '2px 6px', background: '#e53e3e', borderRadius: '4px', marginLeft: '8px' }}>
-                                      Dangerous
+                                      危险
                                     </span>
                                   )}
                                   {tool.requires_approval && (
                                     <span style={{ fontSize: '0.7rem', padding: '2px 6px', background: '#d69e2e', borderRadius: '4px', marginLeft: '8px' }}>
-                                      Approval
+                                      需审批
                                     </span>
                                   )}
                                 </div>
@@ -692,7 +693,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                               <p className={styles.toolDescription}>{tool.description}</p>
                               {tool.parameters && tool.parameters.length > 0 && (
                                 <div style={{ marginTop: '4px', fontSize: '0.75rem', color: '#666' }}>
-                                  Params: {tool.parameters.map(p => p.name).join(', ')}
+                                  参数: {tool.parameters.map(p => p.name).join(', ')}
                                 </div>
                               )}
                             </div>
@@ -703,7 +704,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                   ))}
 
                   {systemToolCategories.length === 0 && (
-                    <p style={{ color: '#888' }}>Loading system tools...</p>
+                    <p style={{ color: '#888' }}>加载系统工具中...</p>
                   )}
                 </div>
 
@@ -712,12 +713,12 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                 {/* Built-in Tools Section */}
                 <div className={styles.formSection}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <h4 style={{ margin: 0 }}>Built-in Tools</h4>
-                    <button type="button" className={listStyles.button} onClick={handleAddTool}>+ Add Tool</button>
+                    <h4 style={{ margin: 0 }}>自定义工具</h4>
+                    <button type="button" className={listStyles.button} onClick={handleAddTool}>+ 添加工具</button>
                   </div>
 
                   {(formData.builtin_tools || []).length === 0 ? (
-                    <p style={{ color: '#888' }}>No tools configured</p>
+                    <p style={{ color: '#888' }}>暂无配置的工具</p>
                   ) : (
                     (formData.builtin_tools || []).map((tool, index) => (
                       <div key={index} className={styles.toolCard}>
@@ -729,14 +730,14 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                             </span>
                           </div>
                           <div>
-                            <button type="button" className={listStyles.buttonLink} onClick={() => handleEditTool(tool)}>Edit</button>
-                            <button type="button" className={listStyles.buttonLink} style={{ color: '#f56565' }} onClick={() => handleDeleteTool(tool.name)}>Delete</button>
+                            <button type="button" className={listStyles.buttonLink} onClick={() => handleEditTool(tool)}>编辑</button>
+                            <button type="button" className={listStyles.buttonLink} style={{ color: '#f56565' }} onClick={() => handleDeleteTool(tool.name)}>删除</button>
                           </div>
                         </div>
                         <p className={styles.toolDescription}>{tool.description}</p>
                         {tool.parameters && tool.parameters.length > 0 && (
                           <div style={{ marginTop: '8px', fontSize: '0.8rem', color: '#888' }}>
-                            Parameters: {tool.parameters.map(p => p.name).join(', ')}
+                            参数: {tool.parameters.map(p => p.name).join(', ')}
                           </div>
                         )}
                       </div>
@@ -749,12 +750,12 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                 {/* MCP Servers Section */}
                 <div className={styles.formSection}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <h4 style={{ margin: 0 }}>MCP Servers</h4>
-                    <button type="button" className={listStyles.button} onClick={() => handleAddPlugin('mcp')}>+ Add MCP</button>
+                    <h4 style={{ margin: 0 }}>MCP 服务器</h4>
+                    <button type="button" className={listStyles.button} onClick={() => handleAddPlugin('mcp')}>+ 添加 MCP</button>
                   </div>
 
                   {plugins.filter(p => p.type === 'mcp').length === 0 ? (
-                    <p style={{ color: '#888' }}>No MCP servers configured</p>
+                    <p style={{ color: '#888' }}>暂无配置的 MCP 服务器</p>
                   ) : (
                     plugins.filter(p => p.type === 'mcp').map((plugin) => (
                       <div key={plugin.id} className={styles.toolCard}>
@@ -763,10 +764,10 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                             <span>{plugin.name}</span>
                             <span style={{ fontSize: '0.75rem', padding: '2px 8px', background: '#2d3748', borderRadius: '4px' }}>MCP</span>
                           </div>
-                          <button type="button" className={listStyles.buttonLink} style={{ color: '#f56565' }} onClick={() => handleDeletePlugin(plugin.id)}>Delete</button>
+                          <button type="button" className={listStyles.buttonLink} style={{ color: '#f56565' }} onClick={() => handleDeletePlugin(plugin.id)}>删除</button>
                         </div>
                         {plugin.tools && plugin.tools.length > 0 && (
-                          <p className={styles.toolDescription}>Tools: {plugin.tools.join(', ')}</p>
+                          <p className={styles.toolDescription}>工具: {plugin.tools.join(', ')}</p>
                         )}
                       </div>
                     ))
@@ -778,12 +779,12 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                 {/* Skills Section */}
                 <div className={styles.formSection}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <h4 style={{ margin: 0 }}>Skills</h4>
-                    <button type="button" className={listStyles.button} onClick={() => handleAddPlugin('skill')}>+ Add Skill</button>
+                    <h4 style={{ margin: 0 }}>技能</h4>
+                    <button type="button" className={listStyles.button} onClick={() => handleAddPlugin('skill')}>+ 添加技能</button>
                   </div>
 
                   {plugins.filter(p => p.type === 'skill').length === 0 ? (
-                    <p style={{ color: '#888' }}>No skills configured</p>
+                    <p style={{ color: '#888' }}>暂无配置的技能</p>
                   ) : (
                     plugins.filter(p => p.type === 'skill').map((plugin) => (
                       <div key={plugin.id} className={styles.toolCard}>
@@ -792,10 +793,10 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                             <span>{plugin.name}</span>
                             <span style={{ fontSize: '0.75rem', padding: '2px 8px', background: '#553c9a', borderRadius: '4px' }}>Skill</span>
                           </div>
-                          <button type="button" className={listStyles.buttonLink} style={{ color: '#f56565' }} onClick={() => handleDeletePlugin(plugin.id)}>Delete</button>
+                          <button type="button" className={listStyles.buttonLink} style={{ color: '#f56565' }} onClick={() => handleDeletePlugin(plugin.id)}>删除</button>
                         </div>
                         {plugin.tools && plugin.tools.length > 0 && (
-                          <p className={styles.toolDescription}>Functions: {plugin.tools.join(', ')}</p>
+                          <p className={styles.toolDescription}>函数: {plugin.tools.join(', ')}</p>
                         )}
                       </div>
                     ))
@@ -807,12 +808,12 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                 {/* RAG Sources Section */}
                 <div className={styles.formSection}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <h4 style={{ margin: 0 }}>RAG Sources</h4>
-                    <button type="button" className={listStyles.button} onClick={() => handleAddPlugin('rag')}>+ Add RAG</button>
+                    <h4 style={{ margin: 0 }}>RAG 数据源</h4>
+                    <button type="button" className={listStyles.button} onClick={() => handleAddPlugin('rag')}>+ 添加 RAG</button>
                   </div>
 
                   {plugins.filter(p => p.type === 'rag').length === 0 ? (
-                    <p style={{ color: '#888' }}>No RAG sources configured</p>
+                    <p style={{ color: '#888' }}>暂无配置的 RAG 数据源</p>
                   ) : (
                     plugins.filter(p => p.type === 'rag').map((plugin) => (
                       <div key={plugin.id} className={styles.toolCard}>
@@ -821,7 +822,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                             <span>{plugin.name}</span>
                             <span style={{ fontSize: '0.75rem', padding: '2px 8px', background: '#2f855a', borderRadius: '4px' }}>RAG</span>
                           </div>
-                          <button type="button" className={listStyles.buttonLink} style={{ color: '#f56565' }} onClick={() => handleDeletePlugin(plugin.id)}>Delete</button>
+                          <button type="button" className={listStyles.buttonLink} style={{ color: '#f56565' }} onClick={() => handleDeletePlugin(plugin.id)}>删除</button>
                         </div>
                       </div>
                     ))
@@ -833,7 +834,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
               <div className={`${styles.tabContent} ${activeTab === 'output' ? styles.tabContentActive : ''}`}>
                 <div className={styles.formSection}>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Output Format Type</label>
+                    <label className={listStyles.formLabel}>输出格式类型</label>
                     <select
                       value={formData.output_format?.format_type || 'text'}
                       onChange={(e) => setFormData(prev => ({
@@ -842,10 +843,10 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                       }))}
                       className={listStyles.formInput}
                     >
-                      <option value="text">Plain Text</option>
+                      <option value="text">纯文本</option>
                       <option value="markdown">Markdown</option>
                       <option value="json">JSON</option>
-                      <option value="structured">Structured</option>
+                      <option value="structured">结构化</option>
                     </select>
                   </div>
 
@@ -871,7 +872,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                   )}
 
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Output Example</label>
+                    <label className={listStyles.formLabel}>输出示例</label>
                     <textarea
                       value={formData.output_format?.example || ''}
                       onChange={(e) => setFormData(prev => ({
@@ -880,14 +881,14 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                       }))}
                       className={listStyles.formTextarea}
                       rows={4}
-                      placeholder="Example of expected output..."
+                      placeholder="期望输出的示例..."
                     />
                   </div>
                 </div>
 
                 <div className={styles.formSection}>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Max Output Tokens</label>
+                    <label className={listStyles.formLabel}>最大输出 Token 数</label>
                     <input
                       type="number"
                       name="max_output_tokens"
@@ -902,81 +903,81 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
               {/* Settings Tab */}
               <div className={`${styles.tabContent} ${activeTab === 'settings' ? styles.tabContentActive : ''}`}>
                 <div className={styles.formSection}>
-                  <h4 style={{ marginTop: 0 }}>Routing Strategy</h4>
+                  <h4 style={{ marginTop: 0 }}>路由策略</h4>
                   <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '12px' }}>
-                    How this agent routes tasks to its child agents (only applies if this agent has children)
+                    此 Agent 如何将任务路由给子 Agent (仅在有子 Agent 时生效)
                   </p>
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Routing Mode</label>
+                    <label className={listStyles.formLabel}>路由模式</label>
                     <select name="routing_strategy" value={formData.routing_strategy || 'sequential'} onChange={handleFormChange} className={listStyles.formInput}>
-                      <option value="sequential">Sequential - Execute children one by one</option>
-                      <option value="parallel">Parallel - Execute all children simultaneously</option>
-                      <option value="conditional">Conditional - Route based on conditions</option>
-                      <option value="handoff">Handoff - Transfer control to specialist</option>
-                      <option value="hierarchical">Hierarchical - Decompose and aggregate</option>
-                      <option value="coordinator">Coordinator - Parent integrates child results</option>
-                      <option value="round_robin">Round Robin - Distribute evenly</option>
-                      <option value="load_balanced">Load Balanced - Based on agent load</option>
+                      <option value="sequential">顺序执行 - 依次执行子 Agent</option>
+                      <option value="parallel">并行执行 - 同时执行所有子 Agent</option>
+                      <option value="conditional">条件路由 - 根据条件选择执行</option>
+                      <option value="handoff">交接模式 - 转交给专家</option>
+                      <option value="hierarchical">层级分解 - 分解任务并聚合结果</option>
+                      <option value="coordinator">协调者模式 - 父节点整合子节点结果</option>
+                      <option value="round_robin">轮询分发 - 均匀分配</option>
+                      <option value="load_balanced">负载均衡 - 根据负载分配</option>
                     </select>
                   </div>
 
                   {/* Strategy-specific tips */}
                   {formData.routing_strategy === 'sequential' && (
                     <div style={{ padding: '12px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '8px', marginTop: '12px' }}>
-                      <strong style={{ color: '#6366f1' }}>Sequential Mode</strong>
+                      <strong style={{ color: '#6366f1' }}>顺序执行模式</strong>
                       <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: '#aaa' }}>
-                        Children execute one by one. Each child receives the accumulated context from previous children.
-                        Best for: pipelines, step-by-step processing, dependent tasks.
+                        子 Agent 依次执行。每个子 Agent 接收前一个 Agent 的累积上下文。
+                        适用于: 流水线处理、步骤依赖任务。
                       </p>
                     </div>
                   )}
 
                   {formData.routing_strategy === 'parallel' && (
                     <div style={{ padding: '12px', background: 'rgba(34, 197, 94, 0.1)', borderRadius: '8px', marginTop: '12px' }}>
-                      <strong style={{ color: '#22c55e' }}>Parallel Mode</strong>
+                      <strong style={{ color: '#22c55e' }}>并行执行模式</strong>
                       <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: '#aaa' }}>
-                        All children execute simultaneously. Results are collected when all complete.
-                        Best for: independent subtasks, faster execution, batch processing.
+                        所有子 Agent 同时执行。完成后收集所有结果。
+                        适用于: 独立子任务、批量处理、提高效率。
                       </p>
                     </div>
                   )}
 
                   {(formData.routing_strategy === 'conditional' || formData.routing_strategy === 'handoff') && (
                     <div style={{ padding: '12px', background: 'rgba(251, 191, 36, 0.1)', borderRadius: '8px', marginTop: '12px' }}>
-                      <strong style={{ color: '#fbbf24' }}>Conditional/Handoff Mode</strong>
+                      <strong style={{ color: '#fbbf24' }}>条件/交接模式</strong>
                       <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: '#aaa' }}>
-                        Routes to specific child based on parent's output content. Configure conditions to match keywords.
-                        Best for: classification, intent routing, specialist delegation.
+                        根据父 Agent 输出内容路由到特定子 Agent。配置条件匹配关键词。
+                        适用于: 意图分类、专家委派。
                       </p>
                       <p style={{ margin: '8px 0 0', fontSize: '0.8rem', color: '#888' }}>
-                        Tip: Use parent's system prompt to output specific keywords that match routing conditions.
+                        提示: 在父 Agent 系统提示中输出与路由条件匹配的关键词。
                       </p>
                     </div>
                   )}
 
                   {formData.routing_strategy === 'coordinator' && (
                     <div style={{ padding: '12px', background: 'rgba(168, 85, 247, 0.1)', borderRadius: '8px', marginTop: '12px' }}>
-                      <strong style={{ color: '#a855f7' }}>Coordinator Mode</strong>
+                      <strong style={{ color: '#a855f7' }}>协调者模式</strong>
                       <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: '#aaa' }}>
-                        Parent sends task to children, then receives their responses and synthesizes a final answer.
-                        Best for: multi-expert collaboration, consensus building, comprehensive analysis.
+                        父 Agent 将任务发送给子 Agent，然后接收并综合所有结果。
+                        适用于: 多专家协作、共识构建、综合分析。
                       </p>
                     </div>
                   )}
 
                   {formData.routing_strategy === 'hierarchical' && (
                     <div style={{ padding: '12px', background: 'rgba(236, 72, 153, 0.1)', borderRadius: '8px', marginTop: '12px' }}>
-                      <strong style={{ color: '#ec4899' }}>Hierarchical Mode</strong>
+                      <strong style={{ color: '#ec4899' }}>层级分解模式</strong>
                       <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: '#aaa' }}>
-                        Parent decomposes the task, distributes subtasks to children, and aggregates results.
-                        Best for: complex task decomposition, divide-and-conquer strategies.
+                        父 Agent 分解任务，分发子任务给子 Agent，然后聚合结果。
+                        适用于: 复杂任务分解、分治策略。
                       </p>
                     </div>
                   )}
                 </div>
 
                 <div className={styles.formSection}>
-                  <h4 style={{ marginTop: 0 }}>Execution Settings</h4>
+                  <h4 style={{ marginTop: 0 }}>执行设置</h4>
 
                   <div className={listStyles.formGroup} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <input
@@ -986,7 +987,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                       onChange={handleFormChange}
                       id="streaming_enabled"
                     />
-                    <label htmlFor="streaming_enabled">Enable Streaming</label>
+                    <label htmlFor="streaming_enabled">启用流式输出</label>
                   </div>
 
                   <div className={listStyles.formGroup} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -997,7 +998,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                       onChange={handleFormChange}
                       id="parallel_tool_calls"
                     />
-                    <label htmlFor="parallel_tool_calls">Allow Parallel Tool Calls</label>
+                    <label htmlFor="parallel_tool_calls">允许并行工具调用</label>
                   </div>
 
                   <div className={listStyles.formGroup} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1008,34 +1009,34 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                       onChange={handleFormChange}
                       id="content_filter_enabled"
                     />
-                    <label htmlFor="content_filter_enabled">Enable Content Filter</label>
+                    <label htmlFor="content_filter_enabled">启用内容过滤</label>
                   </div>
 
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Tool Choice</label>
+                    <label className={listStyles.formLabel}>工具选择</label>
                     <select name="tool_choice" value={formData.tool_choice || 'auto'} onChange={handleFormChange} className={listStyles.formInput}>
-                      <option value="auto">Auto</option>
-                      <option value="none">None</option>
-                      <option value="required">Required</option>
+                      <option value="auto">自动</option>
+                      <option value="none">禁用</option>
+                      <option value="required">必须使用</option>
                     </select>
                   </div>
                 </div>
 
                 <div className={styles.formSection}>
-                  <h4 style={{ marginTop: 0 }}>Context Management</h4>
+                  <h4 style={{ marginTop: 0 }}>上下文管理</h4>
 
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Context Window Strategy</label>
+                    <label className={listStyles.formLabel}>上下文窗口策略</label>
                     <select name="context_window_strategy" value={formData.context_window_strategy || 'sliding'} onChange={handleFormChange} className={listStyles.formInput}>
-                      <option value="sliding">Sliding Window</option>
-                      <option value="truncate">Truncate Old</option>
-                      <option value="summarize">Summarize</option>
-                      <option value="smart">Smart Selection</option>
+                      <option value="sliding">滑动窗口</option>
+                      <option value="truncate">截断旧消息</option>
+                      <option value="summarize">摘要压缩</option>
+                      <option value="smart">智能选择</option>
                     </select>
                   </div>
 
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Max Context Messages</label>
+                    <label className={listStyles.formLabel}>最大上下文消息数</label>
                     <input
                       type="number"
                       name="max_context_messages"
@@ -1047,16 +1048,16 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                 </div>
 
                 <div className={styles.formSection}>
-                  <h4 style={{ marginTop: 0 }}>Knowledge Base</h4>
+                  <h4 style={{ marginTop: 0 }}>知识库</h4>
 
                   <div className={listStyles.formGroup}>
-                    <label className={listStyles.formLabel}>Knowledge Base ID</label>
+                    <label className={listStyles.formLabel}>知识库 ID</label>
                     <input
                       name="knowledge_base"
                       value={formData.knowledge_base || ''}
                       onChange={handleFormChange}
                       className={listStyles.formInput}
-                      placeholder="Optional knowledge base reference"
+                      placeholder="可选的知识库引用"
                     />
                   </div>
                 </div>
@@ -1066,16 +1067,16 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
         </div>
 
         <div className={styles.drawerFooter}>
-          <button className={listStyles.buttonLink} onClick={onClose}>Cancel</button>
-          <button className={listStyles.button} onClick={() => setTestModalVisible(true)}>Test</button>
+          <button className={listStyles.buttonLink} onClick={onClose}>取消</button>
+          <button className={listStyles.button} onClick={() => setTestModalVisible(true)}>测试</button>
           <button className={`${listStyles.button} ${listStyles.buttonPrimary}`} onClick={handleSave} disabled={loading}>
-            {loading ? 'Saving...' : 'Save'}
+            {loading ? '保存中...' : '保存'}
           </button>
         </div>
       </div>
 
       {/* Test Modal - Chat Interface */}
-      <Modal isOpen={testModalVisible} onClose={() => setTestModalVisible(false)} title={`Chat with ${formData.name || 'Agent'}`}>
+      <Modal isOpen={testModalVisible} onClose={() => setTestModalVisible(false)} title={`与 ${formData.name || 'Agent'} 对话`}>
         <div style={{ display: 'flex', flexDirection: 'column', height: '500px' }}>
           {/* Chat Messages Area */}
           <div
@@ -1091,8 +1092,8 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
           >
             {chatMessages.length === 0 ? (
               <div style={{ color: '#666', textAlign: 'center', marginTop: '50px' }}>
-                <p>Start a conversation with the agent</p>
-                <p style={{ fontSize: '0.8rem' }}>Type a message below and press Enter or click Send</p>
+                <p>开始与 Agent 对话</p>
+                <p style={{ fontSize: '0.8rem' }}>在下方输入消息，按 Enter 或点击发送按钮</p>
               </div>
             ) : (
               chatMessages.map((msg, idx) => (
@@ -1135,7 +1136,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                   background: '#1e1e3f',
                   color: '#888',
                 }}>
-                  <span className={styles.thinkingIndicator}>Thinking...</span>
+                  <span className={styles.thinkingIndicator}>思考中...</span>
                 </div>
               </div>
             )}
@@ -1150,7 +1151,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
               className={listStyles.formTextarea}
               style={{ flex: 1, resize: 'none' }}
               rows={2}
-              placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
+              placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
               disabled={testLoading}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1161,7 +1162,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                 disabled={testLoading || !testMessage.trim()}
                 style={{ flex: 1 }}
               >
-                {testLoading ? '...' : 'Send'}
+                {testLoading ? '...' : '发送'}
               </button>
               <button
                 type="button"
@@ -1170,21 +1171,21 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                 disabled={testLoading || chatMessages.length === 0}
                 style={{ flex: 1, fontSize: '0.8rem' }}
               >
-                Clear
+                清空
               </button>
             </div>
           </div>
         </div>
 
         <div className={listStyles.modalFooter} style={{ marginTop: '12px' }}>
-          <button type="button" className={listStyles.buttonLink} onClick={() => setTestModalVisible(false)}>Close</button>
+          <button type="button" className={listStyles.buttonLink} onClick={() => setTestModalVisible(false)}>关闭</button>
         </div>
       </Modal>
 
       {/* Tool Modal */}
-      <Modal isOpen={toolModalVisible} onClose={() => setToolModalVisible(false)} title={editingTool ? 'Edit Tool' : 'Add Tool'}>
+      <Modal isOpen={toolModalVisible} onClose={() => setToolModalVisible(false)} title={editingTool ? '编辑工具' : '添加工具'}>
         <div className={listStyles.formGroup}>
-          <label className={listStyles.formLabel}>Tool Name</label>
+          <label className={listStyles.formLabel}>工具名称</label>
           <input
             value={toolForm.name || ''}
             onChange={(e) => setToolForm(prev => ({ ...prev, name: e.target.value }))}
@@ -1194,33 +1195,33 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
         </div>
 
         <div className={listStyles.formGroup}>
-          <label className={listStyles.formLabel}>Description</label>
+          <label className={listStyles.formLabel}>描述</label>
           <textarea
             value={toolForm.description || ''}
             onChange={(e) => setToolForm(prev => ({ ...prev, description: e.target.value }))}
             className={listStyles.formTextarea}
             rows={2}
-            placeholder="What this tool does..."
+            placeholder="这个工具做什么..."
           />
         </div>
 
         <div className={listStyles.formGroup}>
-          <label className={listStyles.formLabel}>Tool Type</label>
+          <label className={listStyles.formLabel}>工具类型</label>
           <select
             value={toolForm.tool_type || 'http'}
             onChange={(e) => setToolForm(prev => ({ ...prev, tool_type: e.target.value as any }))}
             className={listStyles.formInput}
           >
-            <option value="http">HTTP Request</option>
-            <option value="code">Code Execution</option>
-            <option value="transform">Data Transform</option>
+            <option value="http">HTTP 请求</option>
+            <option value="code">代码执行</option>
+            <option value="transform">数据转换</option>
           </select>
         </div>
 
         {toolForm.tool_type === 'http' && (
           <>
             <div className={listStyles.formGroup}>
-              <label className={listStyles.formLabel}>HTTP Method</label>
+              <label className={listStyles.formLabel}>HTTP 方法</label>
               <select
                 value={toolForm.http_method || 'GET'}
                 onChange={(e) => setToolForm(prev => ({ ...prev, http_method: e.target.value }))}
@@ -1245,7 +1246,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
             </div>
 
             <div className={listStyles.formGroup}>
-              <label className={listStyles.formLabel}>Headers (JSON)</label>
+              <label className={listStyles.formLabel}>请求头 (JSON)</label>
               <textarea
                 value={JSON.stringify(toolForm.http_headers || {}, null, 2)}
                 onChange={(e) => {
@@ -1261,7 +1262,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
             </div>
 
             <div className={listStyles.formGroup}>
-              <label className={listStyles.formLabel}>Body Template (JSON)</label>
+              <label className={listStyles.formLabel}>请求体模板 (JSON)</label>
               <textarea
                 value={toolForm.http_body_template || ''}
                 onChange={(e) => setToolForm(prev => ({ ...prev, http_body_template: e.target.value }))}
@@ -1276,7 +1277,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
         {toolForm.tool_type === 'code' && (
           <>
             <div className={listStyles.formGroup}>
-              <label className={listStyles.formLabel}>Language</label>
+              <label className={listStyles.formLabel}>编程语言</label>
               <select
                 value={toolForm.code_language || 'python'}
                 onChange={(e) => setToolForm(prev => ({ ...prev, code_language: e.target.value }))}
@@ -1288,7 +1289,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
             </div>
 
             <div className={listStyles.formGroup}>
-              <label className={listStyles.formLabel}>Code</label>
+              <label className={listStyles.formLabel}>代码</label>
               <textarea
                 value={toolForm.code || ''}
                 onChange={(e) => setToolForm(prev => ({ ...prev, code: e.target.value }))}
@@ -1302,7 +1303,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
         )}
 
         <div className={listStyles.formGroup}>
-          <label className={listStyles.formLabel}>Timeout (seconds)</label>
+          <label className={listStyles.formLabel}>超时时间 (秒)</label>
           <input
             type="number"
             value={toolForm.timeout || 30}
@@ -1318,36 +1319,36 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
             onChange={(e) => setToolForm(prev => ({ ...prev, approval_required: e.target.checked }))}
             id="approval_required"
           />
-          <label htmlFor="approval_required">Require Approval Before Execution</label>
+          <label htmlFor="approval_required">执行前需要审批</label>
         </div>
 
         {/* Parameters Section */}
         <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #333' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <label className={listStyles.formLabel} style={{ margin: 0 }}>Parameters</label>
-            <button type="button" className={listStyles.buttonLink} onClick={handleAddParameter}>+ Add Parameter</button>
+            <label className={listStyles.formLabel} style={{ margin: 0 }}>参数</label>
+            <button type="button" className={listStyles.buttonLink} onClick={handleAddParameter}>+ 添加参数</button>
           </div>
 
           {(toolForm.parameters || []).map((param, idx) => (
             <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', padding: '8px', background: '#1a1a2e', borderRadius: '4px' }}>
               <span style={{ flex: 1 }}>{param.name} ({param.type}){param.required && ' *'}</span>
-              <button type="button" className={listStyles.buttonLink} style={{ color: '#f56565' }} onClick={() => handleDeleteParameter(param.name)}>Remove</button>
+              <button type="button" className={listStyles.buttonLink} style={{ color: '#f56565' }} onClick={() => handleDeleteParameter(param.name)}>移除</button>
             </div>
           ))}
         </div>
 
         <div className={listStyles.modalFooter}>
-          <button type="button" className={listStyles.buttonLink} onClick={() => setToolModalVisible(false)}>Cancel</button>
+          <button type="button" className={listStyles.buttonLink} onClick={() => setToolModalVisible(false)}>取消</button>
           <button type="button" className={`${listStyles.button} ${listStyles.buttonPrimary}`} onClick={handleSaveTool}>
-            {editingTool ? 'Update Tool' : 'Add Tool'}
+            {editingTool ? '更新工具' : '添加工具'}
           </button>
         </div>
       </Modal>
 
       {/* Parameter Modal */}
-      <Modal isOpen={paramModalVisible} onClose={() => setParamModalVisible(false)} title="Add Parameter">
+      <Modal isOpen={paramModalVisible} onClose={() => setParamModalVisible(false)} title="添加参数">
         <div className={listStyles.formGroup}>
-          <label className={listStyles.formLabel}>Parameter Name</label>
+          <label className={listStyles.formLabel}>参数名称</label>
           <input
             value={paramForm.name || ''}
             onChange={(e) => setParamForm(prev => ({ ...prev, name: e.target.value }))}
@@ -1357,28 +1358,28 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
         </div>
 
         <div className={listStyles.formGroup}>
-          <label className={listStyles.formLabel}>Type</label>
+          <label className={listStyles.formLabel}>类型</label>
           <select
             value={paramForm.type || 'string'}
             onChange={(e) => setParamForm(prev => ({ ...prev, type: e.target.value as any }))}
             className={listStyles.formInput}
           >
-            <option value="string">String</option>
-            <option value="integer">Integer</option>
-            <option value="number">Number</option>
-            <option value="boolean">Boolean</option>
-            <option value="array">Array</option>
-            <option value="object">Object</option>
+            <option value="string">字符串</option>
+            <option value="integer">整数</option>
+            <option value="number">数字</option>
+            <option value="boolean">布尔值</option>
+            <option value="array">数组</option>
+            <option value="object">对象</option>
           </select>
         </div>
 
         <div className={listStyles.formGroup}>
-          <label className={listStyles.formLabel}>Description</label>
+          <label className={listStyles.formLabel}>描述</label>
           <input
             value={paramForm.description || ''}
             onChange={(e) => setParamForm(prev => ({ ...prev, description: e.target.value }))}
             className={listStyles.formInput}
-            placeholder="Parameter description"
+            placeholder="参数描述"
           />
         </div>
 
@@ -1389,21 +1390,21 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
             onChange={(e) => setParamForm(prev => ({ ...prev, required: e.target.checked }))}
             id="param_required"
           />
-          <label htmlFor="param_required">Required</label>
+          <label htmlFor="param_required">必填</label>
         </div>
 
         <div className={listStyles.modalFooter}>
-          <button type="button" className={listStyles.buttonLink} onClick={() => setParamModalVisible(false)}>Cancel</button>
-          <button type="button" className={`${listStyles.button} ${listStyles.buttonPrimary}`} onClick={handleSaveParameter}>Add</button>
+          <button type="button" className={listStyles.buttonLink} onClick={() => setParamModalVisible(false)}>取消</button>
+          <button type="button" className={`${listStyles.button} ${listStyles.buttonPrimary}`} onClick={handleSaveParameter}>添加</button>
         </div>
       </Modal>
 
       {/* Plugin Modal */}
-      <Modal isOpen={pluginModalVisible} onClose={() => setPluginModalVisible(false)} title={`Add ${pluginType.toUpperCase()}`}>
+      <Modal isOpen={pluginModalVisible} onClose={() => setPluginModalVisible(false)} title={`添加 ${pluginType.toUpperCase()}`}>
         {pluginType === 'mcp' && (
           <>
             <div className={listStyles.formGroup}>
-              <label className={listStyles.formLabel}>Name</label>
+              <label className={listStyles.formLabel}>名称</label>
               <input
                 value={pluginForm.name || ''}
                 onChange={(e) => setPluginForm((prev: any) => ({ ...prev, name: e.target.value }))}
@@ -1413,7 +1414,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
             </div>
 
             <div className={listStyles.formGroup}>
-              <label className={listStyles.formLabel}>Command</label>
+              <label className={listStyles.formLabel}>命令</label>
               <input
                 value={pluginForm.command || ''}
                 onChange={(e) => setPluginForm((prev: any) => ({ ...prev, command: e.target.value }))}
@@ -1423,7 +1424,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
             </div>
 
             <div className={listStyles.formGroup}>
-              <label className={listStyles.formLabel}>Arguments (space separated)</label>
+              <label className={listStyles.formLabel}>参数 (空格分隔)</label>
               <input
                 value={pluginForm.args || ''}
                 onChange={(e) => setPluginForm((prev: any) => ({ ...prev, args: e.target.value }))}
@@ -1437,7 +1438,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
         {pluginType === 'skill' && (
           <>
             <div className={listStyles.formGroup}>
-              <label className={listStyles.formLabel}>Name</label>
+              <label className={listStyles.formLabel}>名称</label>
               <input
                 value={pluginForm.name || ''}
                 onChange={(e) => setPluginForm((prev: any) => ({ ...prev, name: e.target.value }))}
@@ -1447,18 +1448,18 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
             </div>
 
             <div className={listStyles.formGroup}>
-              <label className={listStyles.formLabel}>Description</label>
+              <label className={listStyles.formLabel}>描述</label>
               <textarea
                 value={pluginForm.description || ''}
                 onChange={(e) => setPluginForm((prev: any) => ({ ...prev, description: e.target.value }))}
                 className={listStyles.formTextarea}
                 rows={2}
-                placeholder="What this skill does..."
+                placeholder="这个技能做什么..."
               />
             </div>
 
             <div className={listStyles.formGroup}>
-              <label className={listStyles.formLabel}>Module Path</label>
+              <label className={listStyles.formLabel}>模块路径</label>
               <input
                 value={pluginForm.module_path || ''}
                 onChange={(e) => setPluginForm((prev: any) => ({ ...prev, module_path: e.target.value }))}
@@ -1468,7 +1469,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
             </div>
 
             <div className={listStyles.formGroup}>
-              <label className={listStyles.formLabel}>Function Name</label>
+              <label className={listStyles.formLabel}>函数名称</label>
               <input
                 value={pluginForm.function_name || ''}
                 onChange={(e) => setPluginForm((prev: any) => ({ ...prev, function_name: e.target.value }))}
@@ -1482,7 +1483,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
         {pluginType === 'rag' && (
           <>
             <div className={listStyles.formGroup}>
-              <label className={listStyles.formLabel}>Name</label>
+              <label className={listStyles.formLabel}>名称</label>
               <input
                 value={pluginForm.name || ''}
                 onChange={(e) => setPluginForm((prev: any) => ({ ...prev, name: e.target.value }))}
@@ -1492,13 +1493,13 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
             </div>
 
             <div className={listStyles.formGroup}>
-              <label className={listStyles.formLabel}>RAG Type</label>
+              <label className={listStyles.formLabel}>RAG 类型</label>
               <select
                 value={pluginForm.rag_type || 'vector_db'}
                 onChange={(e) => setPluginForm((prev: any) => ({ ...prev, rag_type: e.target.value }))}
                 className={listStyles.formInput}
               >
-                <option value="vector_db">Vector Database</option>
+                <option value="vector_db">向量数据库</option>
                 <option value="elasticsearch">Elasticsearch</option>
                 <option value="pinecone">Pinecone</option>
                 <option value="chroma">Chroma</option>
@@ -1507,7 +1508,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
             </div>
 
             <div className={listStyles.formGroup}>
-              <label className={listStyles.formLabel}>Connection String</label>
+              <label className={listStyles.formLabel}>连接字符串</label>
               <input
                 value={pluginForm.connection_string || ''}
                 onChange={(e) => setPluginForm((prev: any) => ({ ...prev, connection_string: e.target.value }))}
@@ -1519,9 +1520,9 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
         )}
 
         <div className={listStyles.modalFooter}>
-          <button type="button" className={listStyles.buttonLink} onClick={() => setPluginModalVisible(false)}>Cancel</button>
+          <button type="button" className={listStyles.buttonLink} onClick={() => setPluginModalVisible(false)}>取消</button>
           <button type="button" className={`${listStyles.button} ${listStyles.buttonPrimary}`} onClick={handleSavePlugin}>
-            Register
+            注册
           </button>
         </div>
       </Modal>

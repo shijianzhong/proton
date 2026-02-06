@@ -303,7 +303,7 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
         <div className={styles.panelHeader}>
           <div>
             <h3 className={styles.panelTitle}>
-              Run: {workflowName || 'Workflow'}
+              运行: {workflowName || '工作流'}
             </h3>
             <span className={`${styles.workflowStatus} ${getWorkflowStatusClass()}`}>
               {workflowStatus === 'running' && '● '}
@@ -326,14 +326,14 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Enter your message to the workflow..."
+                placeholder="输入消息给工作流..."
                 disabled={workflowStatus === 'running'}
                 rows={2}
               />
               <div className={styles.inputButtons}>
                 {workflowStatus === 'running' ? (
                   <button className={styles.cancelButton} onClick={handleCancel}>
-                    Cancel
+                    取消
                   </button>
                 ) : (
                   <button
@@ -341,7 +341,7 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
                     onClick={handleRun}
                     disabled={!inputMessage.trim() || !workflowId}
                   >
-                    Run
+                    运行
                   </button>
                 )}
               </div>
@@ -352,11 +352,11 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
           <div className={styles.contentLayout}>
             {/* Timeline */}
             <div className={styles.timelineSection}>
-              <div className={styles.timelineHeader}>Execution Timeline</div>
+              <div className={styles.timelineHeader}>执行时间线</div>
               <div className={styles.timelineList}>
                 {nodesList.length === 0 ? (
                   <div style={{ padding: '16px', color: '#666', textAlign: 'center' }}>
-                    Run the workflow to see execution timeline
+                    运行工作流以查看执行时间线
                   </div>
                 ) : (
                   nodesList.map((node) => (
@@ -391,9 +391,9 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
                   <div className={styles.detailHeader}>
                     <h4 className={styles.detailTitle}>{selectedNode.name}</h4>
                     <div className={styles.detailMeta}>
-                      Status: {selectedNode.status}
+                      状态: {selectedNode.status}
                       {selectedNode.duration_ms !== undefined && (
-                        <> · Duration: {formatDuration(selectedNode.duration_ms)}</>
+                        <> · 耗时: {formatDuration(selectedNode.duration_ms)}</>
                       )}
                     </div>
                   </div>
@@ -411,7 +411,7 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
                     {/* Tool Calls */}
                     {selectedNode.toolCalls.length > 0 && (
                       <div className={styles.toolCallsSection}>
-                        <div className={styles.sectionTitle}>Tool Calls</div>
+                        <div className={styles.sectionTitle}>工具调用</div>
                         {selectedNode.toolCalls.map((tc, idx) => (
                           <div key={idx} className={styles.toolCallCard}>
                             <div className={styles.toolCallHeader}>
@@ -429,7 +429,7 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
                     {/* Tool Results */}
                     {selectedNode.toolResults.length > 0 && (
                       <div className={styles.toolCallsSection}>
-                        <div className={styles.sectionTitle}>Tool Results</div>
+                        <div className={styles.sectionTitle}>工具结果</div>
                         {selectedNode.toolResults.map((tr, idx) => (
                           <div key={idx} className={styles.toolResultCard}>
                             <pre className={styles.toolResultContent}>
@@ -444,7 +444,7 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
                     {selectedNode.error && (
                       <div className={styles.errorSection}>
                         <div className={styles.errorTitle}>
-                          ⚠️ Error
+                          ⚠️ 错误
                         </div>
                         <div className={styles.errorContent}>
                           {selectedNode.error}
@@ -456,11 +456,11 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
               ) : (
                 <div className={styles.emptyState}>
                   <div className={styles.emptyStateIcon}>📊</div>
-                  <p>Select a node from the timeline to view details</p>
+                  <p>选择时间线中的节点查看详情</p>
                   {finalResult && (
                     <div className={styles.finalResultSection} style={{ marginTop: 24, textAlign: 'left', width: '100%' }}>
                       <div className={styles.finalResultTitle}>
-                        ✅ Final Result
+                        ✅ 最终结果
                       </div>
                       <div className={styles.finalResultContent}>
                         {finalResult}
@@ -469,7 +469,7 @@ const ExecutionPanel: React.FC<ExecutionPanelProps> = ({
                   )}
                   {workflowError && (
                     <div className={styles.errorSection} style={{ marginTop: 24, textAlign: 'left', width: '100%' }}>
-                      <div className={styles.errorTitle}>⚠️ Workflow Error</div>
+                      <div className={styles.errorTitle}>⚠️ 工作流错误</div>
                       <div className={styles.errorContent}>{workflowError}</div>
                     </div>
                   )}

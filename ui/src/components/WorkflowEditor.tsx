@@ -15,6 +15,7 @@ import 'reactflow/dist/style.css';
 import AgentNode from './AgentNode';
 import AgentEditor from './AgentEditor';
 import ExecutionPanel from './ExecutionPanel';
+import CopilotPanel from './CopilotPanel';
 import { api, AgentTemplate } from '../api/client';
 import styles from './WorkflowEditor.module.css';
 import listStyles from './WorkflowList.module.css'; // Re-use styles
@@ -70,6 +71,9 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
   // Execution Panel state
   const [executionPanelVisible, setExecutionPanelVisible] = useState(false);
 
+  // Copilot Panel state
+  const [copilotVisible, setCopilotVisible] = useState(false);
+
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
 
   // New agent form state
@@ -99,7 +103,7 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
   const handleEditAgent = useCallback((agentId: string, agentType: string) => {
     // Use ref to get the latest workflowId
     if (!currentWorkflowIdRef.current) {
-      alert('Please save the workflow first before editing agent configuration');
+      alert('请先保存工作流后再编辑 Agent 配置');
       setNewWorkflowModalVisible(true);
       return;
     }
@@ -143,12 +147,12 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
       setNodes(flowNodes);
       setEdges(flowEdges);
     } catch (error) {
-      alert('Failed to load workflow');
+      alert('加载工作流失败');
     }
   };
 
   const handleDeleteAgent = useCallback(async (agentId: string) => {
-    if (confirm('Are you sure you want to delete this agent?')) {
+    if (confirm('确定要删除这个 Agent 吗？')) {
       const wfId = currentWorkflowIdRef.current;
       if (wfId) {
         try {
@@ -191,10 +195,10 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
           });
         }
       }
-      alert('Workflow saved');
+      alert('工作流已保存');
     } catch (error) {
       console.error('Failed to save workflow:', error);
-      alert('Failed to save workflow');
+      alert('保存工作流失败');
     } finally {
       setIsSaving(false);
     }
@@ -223,10 +227,10 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
                     parent_id: parentEdge?.source,
                 });
             }
-            alert('Workflow created and saved');
+            alert('工作流创建并保存成功');
         } catch (error) {
             console.error('Failed to create workflow:', error);
-            alert('Failed to create workflow');
+            alert('创建工作流失败');
         } finally {
             setIsSaving(false);
         }
@@ -234,7 +238,7 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
 
   const handleRunWorkflow = async () => {
     if (!currentWorkflowId) {
-      alert('Please save the workflow first');
+      alert('请先保存工作流');
       return;
     }
     // Open the ExecutionPanel instead of using prompt/alert
@@ -246,12 +250,12 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
 
   const handleAddBlankAgent = useCallback(async () => {
     if (!newAgentName.trim()) {
-      alert('Please enter an agent name');
+      alert('请输入 Agent 名称');
       return;
     }
     const wfId = currentWorkflowIdRef.current;
     if (!wfId) {
-      alert('Please save the workflow first');
+      alert('请先保存工作流');
       setNewWorkflowModalVisible(true);
       setIsAddModalOpen(false);
       return;
@@ -284,14 +288,14 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
       setNewAgentType('builtin');
     } catch (error) {
       console.error('Failed to add agent:', error);
-      alert('Failed to add agent');
+      alert('添加 Agent 失败');
     }
   }, [newAgentName, newAgentDescription, newAgentType, nodes.length, handleEditAgent, handleDeleteAgent, setNodes]);
 
   const handleAddFromTemplate = useCallback(async (template: AgentTemplate) => {
     const wfId = currentWorkflowIdRef.current;
     if (!wfId) {
-      alert('Please save the workflow first');
+      alert('请先保存工作流');
       setNewWorkflowModalVisible(true);
       setTemplateModalVisible(false);
       return;
@@ -317,27 +321,30 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
       setTemplateModalVisible(false);
     } catch (error) {
       console.error('Failed to add agent from template:', error);
-      alert('Failed to add agent from template');
+      alert('从模板添加 Agent 失败');
     }
   }, [nodes.length, handleEditAgent, handleDeleteAgent, setNodes]);
 
   return (
     <div className={styles.editorWrapper}>
       <div className={styles.header}>
-        <h2 className={styles.title}>Workflow Editor</h2>
+        <h2 className={styles.title}>工作流编辑器</h2>
         <div className={styles.actions}>
           <div className={styles.dropdown}>
-            <button className={styles.button}>Add Agent</button>
+            <button className={styles.button}>添加 Agent</button>
             <div className={styles.dropdownContent}>
-              <a className={styles.dropdownItem} onClick={() => setIsAddModalOpen(true)}>Blank Agent</a>
-              <a className={styles.dropdownItem} onClick={() => setTemplateModalVisible(true)}>From Template</a>
+              <a className={styles.dropdownItem} onClick={() => setIsAddModalOpen(true)}>空白 Agent</a>
+              <a className={styles.dropdownItem} onClick={() => setTemplateModalVisible(true)}>从模板创建</a>
             </div>
           </div>
           <button className={styles.button} onClick={handleSaveWorkflow} disabled={isSaving}>
-            {isSaving ? 'Saving...' : 'Save'}
+            {isSaving ? '保存中...' : '保存'}
           </button>
           <button className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleRunWorkflow} disabled={!currentWorkflowId}>
-            Run
+            运行
+          </button>
+          <button className={styles.button} onClick={() => setCopilotVisible(true)}>
+            🤖 AI Copilot
           </button>
         </div>
       </div>
@@ -357,83 +364,83 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
           <Background />
           <Panel position="top-left">
             <div className={styles.panel}>
-              <b>{currentWorkflowId ? workflowName : '📝 New Workflow (unsaved)'}</b>
+              <b>{currentWorkflowId ? workflowName : '📝 新工作流 (未保存)'}</b>
             </div>
           </Panel>
         </ReactFlow>
       </div>
 
-      <Modal isOpen={newWorkflowModalVisible} onClose={() => setNewWorkflowModalVisible(false)} title="Create New Workflow">
+      <Modal isOpen={newWorkflowModalVisible} onClose={() => setNewWorkflowModalVisible(false)} title="创建新工作流">
         <form onSubmit={handleCreateNewWorkflow}>
           <div className={listStyles.formGroup}>
-            <label className={listStyles.formLabel} htmlFor="name">Workflow Name</label>
+            <label className={listStyles.formLabel} htmlFor="name">工作流名称</label>
             <input id="name" name="name" className={listStyles.formInput} type="text" required />
           </div>
           <div className={listStyles.formGroup}>
-            <label className={listStyles.formLabel} htmlFor="description">Description</label>
+            <label className={listStyles.formLabel} htmlFor="description">描述</label>
             <textarea id="description" name="description" className={listStyles.formTextarea} />
           </div>
           <div className={listStyles.modalFooter}>
-            <button type="button" className={listStyles.buttonLink} onClick={() => setNewWorkflowModalVisible(false)}>Cancel</button>
+            <button type="button" className={listStyles.buttonLink} onClick={() => setNewWorkflowModalVisible(false)}>取消</button>
             <button type="submit" className={`${listStyles.button} ${listStyles.buttonPrimary}`} disabled={isSaving}>
-              {isSaving ? 'Creating...' : 'Create & Save'}
+              {isSaving ? '创建中...' : '创建并保存'}
             </button>
           </div>
         </form>
       </Modal>
 
-      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Add Blank Agent">
+      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="添加空白 Agent">
         <div className={listStyles.formGroup}>
-          <label className={listStyles.formLabel}>Agent Name</label>
+          <label className={listStyles.formLabel}>Agent 名称</label>
           <input
             className={listStyles.formInput}
             type="text"
             value={newAgentName}
             onChange={(e) => setNewAgentName(e.target.value)}
-            placeholder="Enter agent name"
+            placeholder="请输入 Agent 名称"
           />
         </div>
         <div className={listStyles.formGroup}>
-          <label className={listStyles.formLabel}>Description</label>
+          <label className={listStyles.formLabel}>描述</label>
           <textarea
             className={listStyles.formTextarea}
             value={newAgentDescription}
             onChange={(e) => setNewAgentDescription(e.target.value)}
-            placeholder="Enter description (optional)"
+            placeholder="请输入描述 (可选)"
           />
         </div>
         <div className={listStyles.formGroup}>
-          <label className={listStyles.formLabel}>Agent Type</label>
+          <label className={listStyles.formLabel}>Agent 类型</label>
           <select
             className={listStyles.formInput}
             value={newAgentType}
             onChange={(e) => setNewAgentType(e.target.value)}
           >
-            <option value="builtin">Built-in</option>
-            <option value="native">Native</option>
+            <option value="builtin">内置 (Built-in)</option>
+            <option value="native">原生 (Native)</option>
             <option value="coze">Coze</option>
             <option value="dify">Dify</option>
-            <option value="doubao">Doubao</option>
+            <option value="doubao">豆包 (Doubao)</option>
             <option value="autogen">AutoGen</option>
-            <option value="custom">Custom</option>
+            <option value="custom">自定义 (Custom)</option>
           </select>
         </div>
         <div className={listStyles.modalFooter}>
-          <button type="button" className={listStyles.buttonLink} onClick={() => setIsAddModalOpen(false)}>Cancel</button>
+          <button type="button" className={listStyles.buttonLink} onClick={() => setIsAddModalOpen(false)}>取消</button>
           <button
             type="button"
             className={`${listStyles.button} ${listStyles.buttonPrimary}`}
             onClick={handleAddBlankAgent}
           >
-            Add Agent
+            添加 Agent
           </button>
         </div>
       </Modal>
 
-      <Modal isOpen={templateModalVisible} onClose={() => setTemplateModalVisible(false)} title="Select Template">
+      <Modal isOpen={templateModalVisible} onClose={() => setTemplateModalVisible(false)} title="选择模板">
         <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
           {templates.length === 0 ? (
-            <p>No templates available</p>
+            <p>暂无可用模板</p>
           ) : (
             templates.map((template) => (
               <div
@@ -451,17 +458,17 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
                 <div style={{ fontWeight: 'bold' }}>{template.name}</div>
                 <div style={{ fontSize: '12px', color: '#666' }}>{template.description}</div>
                 <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>
-                  Category: {template.category} {template.is_official && '• Official'}
+                  分类: {template.category} {template.is_official && '• 官方'}
                 </div>
               </div>
             ))
           )}
         </div>
         <div className={listStyles.modalFooter}>
-          <button type="button" className={listStyles.buttonLink} onClick={() => setTemplateModalVisible(false)}>Cancel</button>
+          <button type="button" className={listStyles.buttonLink} onClick={() => setTemplateModalVisible(false)}>取消</button>
         </div>
       </Modal>
-      
+
       <AgentEditor
         visible={editorVisible}
         workflowId={currentWorkflowId || ''}
@@ -476,6 +483,17 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
         workflowId={currentWorkflowId}
         workflowName={workflowName}
         onClose={() => setExecutionPanelVisible(false)}
+      />
+
+      <CopilotPanel
+        visible={copilotVisible}
+        workflowId={currentWorkflowId}
+        onClose={() => setCopilotVisible(false)}
+        onWorkflowGenerated={(id) => {
+          setCurrentWorkflowId(id);
+          loadWorkflow(id);
+          setCopilotVisible(false);
+        }}
       />
     </div>
   );

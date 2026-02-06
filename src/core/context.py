@@ -27,11 +27,13 @@ class CallChain:
 
     Attributes:
         chain: List of agent IDs in call order [root, child1, child2, ...]
+        workflow_ids: List of workflow IDs in the call chain (for workflow inter-calling)
         depth: Current nesting depth
         start_time: When execution started
         context_tokens: Estimated token count in context
     """
     chain: List[str] = field(default_factory=list)
+    workflow_ids: List[str] = field(default_factory=list)  # Track workflow references
     depth: int = 0
     start_time: float = field(default_factory=time.time)
     context_tokens: int = 0
@@ -45,6 +47,7 @@ class CallChain:
         """
         new_chain = CallChain(
             chain=self.chain + [agent_id],
+            workflow_ids=self.workflow_ids.copy(),  # Copy workflow IDs
             depth=self.depth + 1,
             start_time=self.start_time,
             context_tokens=self.context_tokens,
@@ -75,6 +78,14 @@ class CallChain:
     def get_path_string(self) -> str:
         """Get a string representation of the call path."""
         return " -> ".join(self.chain) if self.chain else "(root)"
+
+    def get_workflow_ids(self) -> List[str]:
+        """Get list of workflow IDs in the call chain."""
+        return self.workflow_ids
+
+    def add_workflow(self, workflow_id: str) -> None:
+        """Add a workflow ID to the tracking list."""
+        self.workflow_ids.append(workflow_id)
 
     def __str__(self) -> str:
         return f"CallChain(depth={self.depth}, path={self.get_path_string()})"

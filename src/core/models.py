@@ -16,6 +16,7 @@ class AgentType(str, Enum):
     DIFY = "dify"              # Dify platform agent
     DOUBAO = "doubao"          # Doubao (豆包) platform agent
     AUTOGEN = "autogen"        # AutoGen framework agent
+    WORKFLOW = "workflow"      # Reference to another workflow (inter-calling)
     CUSTOM = "custom"          # Custom adapter
 
 
@@ -333,6 +334,13 @@ class AutoGenConfig(BaseModel):
     max_consecutive_auto_reply: int = 10
 
 
+class WorkflowReferenceConfig(BaseModel):
+    """Configuration for workflow-type agents that reference other workflows."""
+    workflow_id: str                        # Referenced workflow ID
+    input_mapping: Dict[str, str] = Field(default_factory=dict)   # Map parent context to child input
+    output_mapping: Dict[str, str] = Field(default_factory=dict)  # Map child output to parent context
+
+
 class AgentConfig(BaseModel):
     """Unified agent configuration."""
     # Common settings
@@ -346,6 +354,7 @@ class AgentConfig(BaseModel):
     dify_config: Optional[DifyConfig] = None
     doubao_config: Optional[DoubaoConfig] = None
     autogen_config: Optional[AutoGenConfig] = None
+    workflow_config: Optional[WorkflowReferenceConfig] = None  # For WORKFLOW type
 
     # Built-in agent definition (for visual editing)
     builtin_definition: Optional[BuiltinAgentDefinition] = None
@@ -458,6 +467,17 @@ class ExecutionEvent(BaseModel):
 
 # ============== Workflow Configuration ==============
 
+class WorkflowPublishConfig(BaseModel):
+    """Configuration for published workflows."""
+    published: bool = False
+    version: str = "1.0.0"
+    api_key: Optional[str] = None         # Generated API key for access
+    rate_limit: int = 100                 # Requests per minute
+    description: str = ""
+    tags: List[str] = Field(default_factory=list)
+    published_at: Optional[datetime] = None
+
+
 class WorkflowConfig(BaseModel):
     """Configuration for a workflow."""
     id: str
@@ -476,7 +496,54 @@ class WorkflowConfig(BaseModel):
     execution_mode: ExecutionMode = ExecutionMode.ASYNC
     error_handling: ErrorHandlingStrategy = ErrorHandlingStrategy.FAIL_FAST
 
+    # Publishing settings
+    publish_config: Optional[WorkflowPublishConfig] = None
+
     # Metadata
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
     version: str = "1.0.0"
+
+
+# ============== Copilot Session Models ==============
+
+class CopilotMessage(BaseModel):
+    """A message in copilot conversation."""
+    role: str  # user, assistant, tool
+    content: str
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+    tool_results: Optional[List[Dict[str, Any]]] = None
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+
+class CopilotSession(BaseModel):
+    """Session for multi-turn copilot conversation."""
+    session_id: str
+    workflow_id: Optional[str] = None     # Generated workflow ID
+    messages: List[CopilotMessage] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class CopilotEventType(str, Enum):
+    """Types of events emitted during copilot conversation."""
+    CONTENT = "content"           # Text content delta
+    TOOL_START = "tool_start"     # Tool execution started
+    TOOL_RESULT = "tool_result"   # Tool execution completed
+    WORKFLOW_CREATED = "workflow_created"  # New workflow generated
+    WORKFLOW_UPDATED = "workflow_updated"  # Existing workflow modified
+    COMPLETE = "complete"         # Conversation turn complete
+    ERROR = "error"               # Error occurred
+
+
+class CopilotEvent(BaseModel):
+    """Event emitted during copilot conversation."""
+    type: CopilotEventType
+    delta: Optional[str] = None           # For content delta
+    tool_name: Optional[str] = None       # For tool events
+    tool_args: Optional[Dict[str, Any]] = None  # For tool_start
+    result: Optional[Dict[str, Any]] = None     # For tool_result
+    workflow_id: Optional[str] = None     # For workflow events
+    error: Optional[str] = None           # For error events
+    timestamp: datetime = Field(default_factory=datetime.now)

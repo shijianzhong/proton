@@ -19,6 +19,18 @@ agent:
   max_tokens: 4096
   provider: "openai"  # openai, azure, anthropic
 
+# Copilot settings (for AI-assisted workflow generation)
+copilot:
+  enabled: true
+  provider: "openai"  # openai, azure, anthropic, ollama, custom
+  model: "gpt-4"
+  # API key can also be set via COPILOT_API_KEY or OPENAI_API_KEY env vars
+  api_key: ""
+  # Base URL for custom/local providers (e.g., Ollama, vLLM, LocalAI)
+  base_url: ""  # e.g., "http://localhost:11434/v1" for Ollama
+  temperature: 0.7
+  max_tokens: 4096
+
 # Plugin settings
 plugins:
   mcp:

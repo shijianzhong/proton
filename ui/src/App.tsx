@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { FiGrid, FiList, FiCpu, FiSettings } from 'react-icons/fi';
 import WorkflowEditor from './components/WorkflowEditor';
 import WorkflowList from './components/WorkflowList';
+import SettingsPanel from './components/SettingsPanel';
 import styles from './App.module.css';
 
 const App: React.FC = () => {
@@ -9,10 +10,10 @@ const App: React.FC = () => {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
 
   const menuItems = [
-    { key: 'editor', label: 'Workflow Editor', icon: <FiGrid /> },
-    { key: 'workflows', label: 'Workflows', icon: <FiList /> },
-    { key: 'plugins', label: 'Plugins', icon: <FiCpu /> },
-    { key: 'settings', label: 'Settings', icon: <FiSettings /> },
+    { key: 'editor', label: '工作流编辑器', icon: <FiGrid /> },
+    { key: 'workflows', label: '工作流列表', icon: <FiList /> },
+    { key: 'plugins', label: '插件管理', icon: <FiCpu /> },
+    { key: 'settings', label: '系统设置', icon: <FiSettings /> },
   ];
 
   const renderContent = () => {
@@ -34,9 +35,15 @@ const App: React.FC = () => {
           />
         );
       case 'plugins':
-        return <div className={styles.placeholder}>Plugins management coming soon...</div>;
+        return <div className={styles.placeholder}>插件管理功能即将推出...</div>;
       case 'settings':
-        return <div className={styles.placeholder}>Settings coming soon...</div>;
+        return (
+          <SettingsPanel
+            visible={true}
+            isPage={true}
+            onClose={() => setSelectedMenu('editor')}
+          />
+        );
       default:
         return null;
     }

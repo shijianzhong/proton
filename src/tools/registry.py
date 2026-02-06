@@ -58,6 +58,14 @@ class SystemToolRegistry:
             WebDownloadTool(),
         ]
 
+        # Email tools (optional - requires aiosmtplib)
+        try:
+            from .email import SendEmailTool, CheckEmailConfigTool
+            builtin_tools.append(SendEmailTool())
+            builtin_tools.append(CheckEmailConfigTool())
+        except ImportError as e:
+            logger.warning(f"Email tools not available (missing dependency): {e}")
+
         for tool in builtin_tools:
             self.register(tool)
 

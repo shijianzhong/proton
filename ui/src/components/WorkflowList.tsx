@@ -77,7 +77,7 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
       const data = await api.listWorkflows();
       setWorkflows(data);
     } catch (error) {
-      alert('Failed to load workflows');
+      alert('加载工作流失败');
     } finally {
       setLoading(false);
     }
@@ -87,40 +87,40 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
     e.preventDefault();
     try {
       await api.createWorkflow({ name: newName, description: newDescription });
-      alert('Workflow created');
+      alert('工作流已创建');
       setIsCreateModalOpen(false);
       setNewName('');
       setNewDescription('');
       loadWorkflows();
     } catch (error) {
-      alert('Failed to create workflow');
+      alert('创建工作流失败');
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this workflow?')) {
+    if (window.confirm('确定要删除这个工作流吗？')) {
       try {
         await api.deleteWorkflow(id);
-        alert('Workflow deleted');
+        alert('工作流已删除');
         loadWorkflows();
       } catch (error) {
-        alert('Failed to delete workflow');
+        alert('删除工作流失败');
       }
     }
   };
 
   const handleRun = async (id: string) => {
-    const input = prompt('Enter your message:');
+    const input = prompt('请输入消息:');
     if (!input) return;
 
     try {
       const result = await api.runWorkflow(id, input);
-      alert(`Workflow executed: ${result.state}`);
+      alert(`工作流已执行: ${result.state}`);
       if (result.output) {
-        alert(`Output:\n${result.output}`);
+        alert(`输出:\n${result.output}`);
       }
     } catch (error) {
-      alert('Failed to run workflow');
+      alert('运行工作流失败');
     }
   };
 
@@ -130,7 +130,7 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
       setWfTemplates(templates);
       setWfTemplateModalOpen(true);
     } catch (error) {
-      alert('Failed to load workflow templates');
+      alert('加载工作流模板失败');
     }
   };
 
@@ -140,7 +140,7 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
       setWfTemplateDetail(detail);
       setWfTemplateDetailOpen(true);
     } catch (error) {
-      alert('Failed to load template details');
+      alert('加载模板详情失败');
     }
   };
 
@@ -151,10 +151,10 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
       setWfTemplateDetailOpen(false);
       setWfTemplateModalOpen(false);
       loadWorkflows();
-      alert(`Workflow "${result.name}" created with ${result.agent_count} agents!`);
+      alert(`工作流 "${result.name}" 已创建，包含 ${result.agent_count} 个 Agent！`);
       onSelect(result.workflow_id);
     } catch (error) {
-      alert('Failed to create workflow from template');
+      alert('从模板创建工作流失败');
     } finally {
       setCreatingFromTemplate(false);
     }
@@ -163,19 +163,19 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
   return (
     <div className={styles.card}>
       <div className={styles.cardHeader}>
-        <h2 className={styles.cardTitle}>Workflows</h2>
+        <h2 className={styles.cardTitle}>工作流列表</h2>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
             className={styles.button}
             onClick={handleOpenWfTemplates}
           >
-            From Template
+            从模板创建
           </button>
           <button
             className={`${styles.button} ${styles.buttonPrimary}`}
             onClick={() => setIsCreateModalOpen(true)}
           >
-            Create Workflow
+            创建工作流
           </button>
         </div>
       </div>
@@ -184,17 +184,17 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
         <table className={styles.table}>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Description</th>
-              <th>State</th>
-              <th>Agents</th>
-              <th>Updated</th>
-              <th>Actions</th>
+              <th>名称</th>
+              <th>描述</th>
+              <th>状态</th>
+              <th>Agent 数</th>
+              <th>更新时间</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6}>Loading...</td></tr>
+              <tr><td colSpan={6}>加载中...</td></tr>
             ) : (
               workflows.map((wf) => (
                 <tr key={wf.id}>
@@ -204,8 +204,8 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
                   <td>{wf.agent_count}</td>
                   <td>{new Date(wf.updated_at).toLocaleString()}</td>
                   <td>
-                    <button className={styles.buttonLink} onClick={() => handleRun(wf.id)}>Run</button>
-                    <button className={`${styles.buttonLink} ${styles.buttonLinkDanger}`} onClick={() => handleDelete(wf.id)}>Delete</button>
+                    <button className={styles.buttonLink} onClick={() => handleRun(wf.id)}>运行</button>
+                    <button className={`${styles.buttonLink} ${styles.buttonLinkDanger}`} onClick={() => handleDelete(wf.id)}>删除</button>
                   </td>
                 </tr>
               ))
@@ -218,11 +218,11 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        title="Create Workflow"
+        title="创建工作流"
       >
         <form onSubmit={handleCreate}>
           <div className={styles.formGroup}>
-            <label className={styles.formLabel} htmlFor="name">Name</label>
+            <label className={styles.formLabel} htmlFor="name">名称</label>
             <input
               id="name"
               className={styles.formInput}
@@ -233,7 +233,7 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
             />
           </div>
           <div className={styles.formGroup}>
-            <label className={styles.formLabel} htmlFor="description">Description</label>
+            <label className={styles.formLabel} htmlFor="description">描述</label>
             <textarea
               id="description"
               className={styles.formTextarea}
@@ -242,8 +242,8 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
             />
           </div>
           <div className={styles.modalFooter}>
-            <button type="button" className={styles.buttonLink} onClick={() => setIsCreateModalOpen(false)}>Cancel</button>
-            <button type="submit" className={`${styles.button} ${styles.buttonPrimary}`}>Create</button>
+            <button type="button" className={styles.buttonLink} onClick={() => setIsCreateModalOpen(false)}>取消</button>
+            <button type="submit" className={`${styles.button} ${styles.buttonPrimary}`}>创建</button>
           </div>
         </form>
       </Modal>
@@ -252,10 +252,10 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
       <Modal
         isOpen={wfTemplateModalOpen}
         onClose={() => setWfTemplateModalOpen(false)}
-        title="Workflow Templates"
+        title="工作流模板"
       >
         <p style={{ color: '#999', marginBottom: '16px' }}>
-          Select a template to create a complete workflow with pre-configured agents
+          选择一个模板来创建包含预配置 Agent 的完整工作流
         </p>
         <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
           {wfTemplates.map((tpl) => (
@@ -278,8 +278,8 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
                 <div>
                   <div style={{ fontWeight: 'bold', fontSize: '1rem' }}>{tpl.name}</div>
                   <div style={{ fontSize: '0.8rem', color: '#888' }}>
-                    {tpl.agent_count} agents · {tpl.category}
-                    {tpl.is_official && ' · Official'}
+                    {tpl.agent_count} 个 Agent · {tpl.category}
+                    {tpl.is_official && ' · 官方'}
                   </div>
                 </div>
               </div>
@@ -288,7 +288,7 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
           ))}
         </div>
         <div className={styles.modalFooter}>
-          <button type="button" className={styles.buttonLink} onClick={() => setWfTemplateModalOpen(false)}>Close</button>
+          <button type="button" className={styles.buttonLink} onClick={() => setWfTemplateModalOpen(false)}>关闭</button>
         </div>
       </Modal>
 
@@ -296,13 +296,13 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
       <Modal
         isOpen={wfTemplateDetailOpen}
         onClose={() => setWfTemplateDetailOpen(false)}
-        title={wfTemplateDetail ? `${iconMap[wfTemplateDetail.icon] || '📦'} ${wfTemplateDetail.name}` : 'Template Detail'}
+        title={wfTemplateDetail ? `${iconMap[wfTemplateDetail.icon] || '📦'} ${wfTemplateDetail.name}` : '模板详情'}
       >
         {wfTemplateDetail && (
           <>
             <p style={{ color: '#aaa', marginBottom: '20px' }}>{wfTemplateDetail.description}</p>
 
-            <h4 style={{ marginBottom: '12px' }}>Agent Team Structure</h4>
+            <h4 style={{ marginBottom: '12px' }}>Agent 团队结构</h4>
             <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
               {/* Root agents */}
               {wfTemplateDetail.agents
@@ -319,7 +319,7 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
                         <span style={{ fontSize: '1.2rem' }}>{iconMap[rootAgent.icon] || '🤖'}</span>
                         <div>
                           <div style={{ fontWeight: 'bold' }}>{rootAgent.name}</div>
-                          <div style={{ fontSize: '0.8rem', color: '#888' }}>Coordinator</div>
+                          <div style={{ fontSize: '0.8rem', color: '#888' }}>协调者</div>
                         </div>
                       </div>
                       <div style={{ fontSize: '0.85rem', color: '#aaa', marginTop: '6px' }}>{rootAgent.description}</div>
@@ -351,14 +351,14 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
             </div>
 
             <div className={styles.modalFooter}>
-              <button type="button" className={styles.buttonLink} onClick={() => setWfTemplateDetailOpen(false)}>Back</button>
+              <button type="button" className={styles.buttonLink} onClick={() => setWfTemplateDetailOpen(false)}>返回</button>
               <button
                 type="button"
                 className={`${styles.button} ${styles.buttonPrimary}`}
                 onClick={() => handleCreateFromTemplate(wfTemplateDetail.id)}
                 disabled={creatingFromTemplate}
               >
-                {creatingFromTemplate ? 'Creating...' : `Create Workflow (${wfTemplateDetail.agents.length} agents)`}
+                {creatingFromTemplate ? '创建中...' : `创建工作流 (${wfTemplateDetail.agents.length} 个 Agent)`}
               </button>
             </div>
           </>
