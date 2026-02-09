@@ -48,7 +48,8 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
           setConfigModel(cfg.model);
           setConfigBaseUrl(cfg.base_url || '');
           setIsWorkflowLevel(!!workflowId && cfg.is_workflow_level);
-          // Show config if API key not configured (global only)
+          // Only show config panel if global config is not set (when no workflowId)
+          // For workflow-level, user can manually open config to override
           if (!workflowId && !cfg.api_key_configured) {
             setShowConfig(true);
           }
@@ -59,12 +60,13 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
 
   // Create session when config is ready
   useEffect(() => {
-    if (visible && !sessionId && config?.api_key_configured) {
-      api.createCopilotSession()
+    if (visible && !sessionId && config && config.api_key_configured) {
+      // Create session with workflow context if editing existing workflow
+      api.createCopilotSession(workflowId)
         .then(res => setSessionId(res.session_id))
         .catch(err => setError(`创建会话失败: ${err.message}`));
     }
-  }, [visible, sessionId, config]);
+  }, [visible, sessionId, config, workflowId]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -101,7 +103,7 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
 
       // Create session if now configured
       if (result.config.api_key_configured && !sessionId) {
-        const session = await api.createCopilotSession();
+        const session = await api.createCopilotSession(workflowId);
         setSessionId(session.session_id);
       }
     } catch (err: any) {
@@ -186,7 +188,7 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
     setSessionId(null);
 
     try {
-      const res = await api.createCopilotSession();
+      const res = await api.createCopilotSession(workflowId);
       setSessionId(res.session_id);
     } catch (err: any) {
       setError(`创建会话失败: ${err.message}`);
@@ -205,14 +207,21 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
             <h3>Copilot 设置</h3>
           </div>
           <div className={styles.headerActions}>
-            {config?.api_key_configured && (
-              <button
-                className={styles.closeBtn}
-                onClick={() => setShowConfig(false)}
-              >
-                ×
-              </button>
-            )}
+            <button
+              className={styles.closeBtn}
+              onClick={() => {
+                if (config?.api_key_configured) {
+                  setShowConfig(false);
+                } else {
+                  // If no API key configured, go back to chat but show notice
+                  setShowConfig(false);
+                  setError('请先配置 API Key 才能使用 Copilot');
+                }
+              }}
+              title={config?.api_key_configured ? '关闭设置' : '返回（需要配置 API Key）'}
+            >
+              ×
+            </button>
           </div>
         </div>
 
@@ -435,13 +444,27 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
         {messages.length === 0 && (
           <div className={styles.welcomeMessage}>
             <h4>欢迎使用 Workflow Copilot！</h4>
-            <p>描述你想要创建的工作流，我会帮你设计和生成。</p>
+            <p>
+              {workflowId
+                ? '我可以帮你修改和优化当前工作流，或者创建新的工作流。'
+                : '描述你想要创建的工作流，我会帮你设计和生成。'}
+            </p>
             <div className={styles.suggestions}>
               <p>你可以这样说：</p>
               <ul>
-                <li>"创建一个客服工作流，包含问题分诊和专家处理"</li>
-                <li>"构建一个内容审核流水线，包含撰写、编辑和审核"</li>
-                <li>"设计一个数据分析工作流，支持并行处理报表"</li>
+                {workflowId ? (
+                  <>
+                    <li>"在当前工作流中添加一个邮件通知节点"</li>
+                    <li>"优化当前工作流的路由策略"</li>
+                    <li>"为这个工作流添加错误处理逻辑"</li>
+                  </>
+                ) : (
+                  <>
+                    <li>"创建一个客服工作流，包含问题分诊和专家处理"</li>
+                    <li>"构建一个内容审核流水线，包含撰写、编辑和审核"</li>
+                    <li>"设计一个数据分析工作流，支持并行处理报表"</li>
+                  </>
+                )}
               </ul>
             </div>
           </div>
@@ -490,11 +513,45 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
 
       {/* Input Area */}
       <div className={styles.inputArea}>
+        {!sessionId && (
+          <div style={{
+            padding: '8px 12px',
+            backgroundColor: '#fff3cd',
+            border: '1px solid #ffc107',
+            borderRadius: '4px',
+            marginBottom: '8px',
+            fontSize: '13px',
+            color: '#856404'
+          }}>
+            ⚠️ 请先在设置中配置 API Key 才能使用 Copilot
+            <button
+              onClick={() => setShowConfig(true)}
+              style={{
+                marginLeft: '8px',
+                padding: '2px 8px',
+                fontSize: '12px',
+                cursor: 'pointer',
+                backgroundColor: '#ffc107',
+                border: 'none',
+                borderRadius: '3px',
+                color: '#000'
+              }}
+            >
+              前往配置
+            </button>
+          </div>
+        )}
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyPress={handleKeyPress}
-          placeholder="描述你想要创建的工作流..."
+          placeholder={
+            !sessionId
+              ? "请先配置 API Key..."
+              : workflowId
+                ? "描述你想对当前工作流做的修改，或创建新的工作流..."
+                : "描述你想要创建的工作流..."
+          }
           disabled={isGenerating || !sessionId}
           rows={3}
         />

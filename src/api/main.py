@@ -1134,11 +1134,22 @@ def create_app() -> FastAPI:
     # ============== Copilot Endpoints ==============
 
     @app.post("/api/copilot/sessions")
-    async def create_copilot_session():
-        """Create a new copilot session."""
+    async def create_copilot_session(request: Optional[Dict[str, Any]] = None):
+        """Create a new copilot session, optionally associated with a workflow."""
         from ..copilot import get_copilot_service
         copilot = get_copilot_service()
+
+        # Extract workflow_id from request if provided
+        workflow_id = None
+        if request:
+            workflow_id = request.get("workflow_id")
+
         session = await copilot.create_session()
+
+        # Set workflow_id if provided (for editing existing workflows)
+        if workflow_id:
+            session.workflow_id = workflow_id
+
         return {"session_id": session.session_id}
 
     @app.get("/api/copilot/config")

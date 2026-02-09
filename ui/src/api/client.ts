@@ -589,8 +589,10 @@ export const api = {
 
   // ============== Copilot API ==============
 
-  async createCopilotSession(): Promise<{ session_id: string }> {
-    const response = await client.post('/api/copilot/sessions');
+  async createCopilotSession(workflowId?: string | null): Promise<{ session_id: string }> {
+    const response = await client.post('/api/copilot/sessions',
+      workflowId ? { workflow_id: workflowId } : undefined
+    );
     return response.data;
   },
 
