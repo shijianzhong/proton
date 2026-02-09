@@ -272,6 +272,17 @@ async def _send_via_smtp(
     all_recipients = to + (cc or [])
 
     try:
+        import ssl
+        import os
+        
+        # Create SSL context - only disable verification in development
+        ssl_context = None
+        if os.environ.get("FLASK_ENV") == "development" or os.environ.get("DEBUG") == "True":
+            # Create SSL context with certificate verification disabled for development
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+        
         if config.smtp_use_tls:
             # Use STARTTLS
             await aiosmtplib.send(
@@ -282,6 +293,7 @@ async def _send_via_smtp(
                 password=config.smtp_password,
                 start_tls=True,
                 recipients=all_recipients,
+                tls_context=ssl_context,
             )
         else:
             # Use SSL (for ports like 465)
@@ -293,6 +305,7 @@ async def _send_via_smtp(
                 password=config.smtp_password,
                 use_tls=True,
                 recipients=all_recipients,
+                tls_context=ssl_context,
             )
 
         recipient_info = f"收件人: {', '.join(to)}"
