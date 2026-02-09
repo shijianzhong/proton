@@ -11,7 +11,11 @@ interface SettingsPanelProps {
 type TabType = 'search' | 'copilot' | 'email';
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, isPage = false }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('search');
+  // Load active tab from localStorage, default to 'search'
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    const saved = localStorage.getItem('proton_settings_active_tab');
+    return (saved as TabType) || 'search';
+  });
 
   // Search config state
   const [searchConfig, setSearchConfig] = useState<SearchConfig | null>(null);
@@ -51,6 +55,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, isPage 
   const [isTestingEmail, setIsTestingEmail] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
+
+  // Save active tab to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('proton_settings_active_tab', activeTab);
+  }, [activeTab]);
 
   // Load configs on mount
   useEffect(() => {

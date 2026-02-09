@@ -80,9 +80,10 @@ def _get_email_method() -> str:
 class EmailConfig:
     """
     Runtime email configuration that can be updated via API.
-    Uses singleton pattern.
+    Uses singleton pattern with database persistence.
     """
     _instance: Optional["EmailConfig"] = None
+    _initialized: bool = False
 
     def __init__(self):
         # Resend config
@@ -101,12 +102,73 @@ class EmailConfig:
         self.preferred_method = "auto"  # "auto", "resend", "smtp"
 
     @classmethod
+    async def initialize_from_storage(cls) -> "EmailConfig":
+        """Initialize configuration from database, fallback to environment variables."""
+        instance = cls.get_instance()
+
+        if cls._initialized:
+            return instance
+
+        try:
+            from ..storage.persistence import get_storage_manager
+
+            storage = get_storage_manager()
+            await storage.initialize()
+
+            # Load from database
+            saved_config = await storage.load_config("email")
+
+            if saved_config:
+                logger.info("Loading email config from database")
+                instance.resend_api_key = saved_config.get("resend_api_key", instance.resend_api_key)
+                instance.resend_from = saved_config.get("resend_from", instance.resend_from)
+                instance.smtp_host = saved_config.get("smtp_host", instance.smtp_host)
+                instance.smtp_port = saved_config.get("smtp_port", instance.smtp_port)
+                instance.smtp_user = saved_config.get("smtp_user", instance.smtp_user)
+                instance.smtp_password = saved_config.get("smtp_password", instance.smtp_password)
+                instance.smtp_from = saved_config.get("smtp_from", instance.smtp_from)
+                instance.smtp_use_tls = saved_config.get("smtp_use_tls", instance.smtp_use_tls)
+                instance.preferred_method = saved_config.get("preferred_method", instance.preferred_method)
+            else:
+                logger.info("No saved email config found, using environment variables")
+        except Exception as e:
+            logger.warning(f"Failed to load email config from storage: {e}, using environment variables")
+
+        cls._initialized = True
+        return instance
+
+    @classmethod
     def get_instance(cls) -> "EmailConfig":
         if cls._instance is None:
             cls._instance = EmailConfig()
         return cls._instance
 
-    def update(
+    async def save_to_storage(self) -> None:
+        """Save current configuration to database."""
+        try:
+            from ..storage.persistence import get_storage_manager
+
+            storage = get_storage_manager()
+            await storage.initialize()
+
+            config_data = {
+                "resend_api_key": self.resend_api_key,
+                "resend_from": self.resend_from,
+                "smtp_host": self.smtp_host,
+                "smtp_port": self.smtp_port,
+                "smtp_user": self.smtp_user,
+                "smtp_password": self.smtp_password,
+                "smtp_from": self.smtp_from,
+                "smtp_use_tls": self.smtp_use_tls,
+                "preferred_method": self.preferred_method,
+            }
+
+            await storage.save_config("email", config_data)
+            logger.info("Email config saved to database")
+        except Exception as e:
+            logger.error(f"Failed to save email config to storage: {e}")
+
+    async def update(
         self,
         resend_api_key: Optional[str] = None,
         resend_from: Optional[str] = None,
@@ -118,7 +180,7 @@ class EmailConfig:
         smtp_use_tls: Optional[bool] = None,
         preferred_method: Optional[str] = None,
     ) -> None:
-        """Update email configuration."""
+        """Update email configuration and save to database."""
         if resend_api_key is not None:
             self.resend_api_key = resend_api_key
         if resend_from is not None:
@@ -137,6 +199,9 @@ class EmailConfig:
             self.smtp_use_tls = smtp_use_tls
         if preferred_method is not None:
             self.preferred_method = preferred_method
+
+        # Save to database after update
+        await self.save_to_storage()
 
     def is_resend_configured(self) -> bool:
         return bool(self.resend_api_key and self.resend_from)

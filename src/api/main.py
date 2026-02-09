@@ -214,6 +214,28 @@ async def lifespan(app: FastAPI):
     storage = await initialize_storage()
     logger.info("Storage initialized")
 
+    # Load configurations from database
+    logger.info("Loading configurations from database...")
+    try:
+        from ..tools.email import EmailConfig
+        from ..tools.web import SearchConfig
+        from ..copilot import get_copilot_service
+
+        # Initialize email config
+        await EmailConfig.initialize_from_storage()
+        logger.info("Email configuration loaded")
+
+        # Initialize search config
+        await SearchConfig.initialize_from_storage()
+        logger.info("Search configuration loaded")
+
+        # Initialize copilot config
+        copilot = get_copilot_service()
+        await copilot.load_from_storage()
+        logger.info("Copilot configuration loaded")
+    except Exception as e:
+        logger.warning(f"Failed to load some configurations: {e}")
+
     # Pre-load workflows
     manager = get_workflow_manager()
     await manager._ensure_storage()
@@ -1139,7 +1161,7 @@ def create_app() -> FastAPI:
         """
         from ..copilot import get_copilot_service
         copilot = get_copilot_service()
-        copilot.update_config(
+        await copilot.update_config(
             provider=request.provider,
             model=request.model,
             api_key=request.api_key,
@@ -1335,7 +1357,7 @@ def create_app() -> FastAPI:
         """
         from ..tools import get_search_config
         config = get_search_config()
-        config.update(
+        await config.update(
             provider=request.provider,
             searxng_base_url=request.searxng_base_url,
             serper_api_key=request.serper_api_key,
@@ -1413,7 +1435,7 @@ def create_app() -> FastAPI:
         try:
             from ..tools.email import get_email_config
             config = get_email_config()
-            config.update(
+            await config.update(
                 preferred_method=request.preferred_method,
                 resend_api_key=request.resend_api_key,
                 resend_from=request.resend_from,

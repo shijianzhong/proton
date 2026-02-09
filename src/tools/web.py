@@ -58,9 +58,10 @@ GOOGLE_CX = os.environ.get("GOOGLE_CX", "")
 # ============== Runtime Configuration ==============
 
 class SearchConfig:
-    """Runtime search configuration that can be updated via API."""
+    """Runtime search configuration that can be updated via API with database persistence."""
 
     _instance = None
+    _initialized = False
 
     def __init__(self):
         # Load from environment as defaults
@@ -78,7 +79,41 @@ class SearchConfig:
             cls._instance = SearchConfig()
         return cls._instance
 
-    def update(
+    @classmethod
+    async def initialize_from_storage(cls) -> "SearchConfig":
+        """Initialize configuration from database, fallback to environment variables."""
+        instance = cls.get_instance()
+
+        if cls._initialized:
+            return instance
+
+        try:
+            from ..storage.persistence import get_storage_manager
+
+            storage = get_storage_manager()
+            await storage.initialize()
+
+            # Load from database
+            saved_config = await storage.load_config("search")
+
+            if saved_config:
+                logger.info("Loading search config from database")
+                instance.provider = saved_config.get("provider", instance.provider)
+                instance.searxng_base_url = saved_config.get("searxng_base_url", instance.searxng_base_url)
+                instance.serper_api_key = saved_config.get("serper_api_key", instance.serper_api_key)
+                instance.brave_api_key = saved_config.get("brave_api_key", instance.brave_api_key)
+                instance.bing_api_key = saved_config.get("bing_api_key", instance.bing_api_key)
+                instance.google_api_key = saved_config.get("google_api_key", instance.google_api_key)
+                instance.google_cx = saved_config.get("google_cx", instance.google_cx)
+            else:
+                logger.info("No saved search config found, using environment variables")
+        except Exception as e:
+            logger.warning(f"Failed to load search config from storage: {e}, using environment variables")
+
+        cls._initialized = True
+        return instance
+
+    async def update(
         self,
         provider: Optional[str] = None,
         searxng_base_url: Optional[str] = None,
@@ -88,7 +123,7 @@ class SearchConfig:
         google_api_key: Optional[str] = None,
         google_cx: Optional[str] = None,
     ) -> None:
-        """Update search configuration."""
+        """Update search configuration and save to database."""
         if provider is not None:
             self.provider = provider.lower()
         if searxng_base_url is not None:
@@ -105,6 +140,32 @@ class SearchConfig:
             self.google_cx = google_cx
 
         logger.info(f"Search config updated: provider={self.provider}")
+
+        # Save to database after update
+        await self.save_to_storage()
+
+    async def save_to_storage(self) -> None:
+        """Save current configuration to database."""
+        try:
+            from ..storage.persistence import get_storage_manager
+
+            storage = get_storage_manager()
+            await storage.initialize()
+
+            config_data = {
+                "provider": self.provider,
+                "searxng_base_url": self.searxng_base_url,
+                "serper_api_key": self.serper_api_key,
+                "brave_api_key": self.brave_api_key,
+                "bing_api_key": self.bing_api_key,
+                "google_api_key": self.google_api_key,
+                "google_cx": self.google_cx,
+            }
+
+            await storage.save_config("search", config_data)
+            logger.info("Search config saved to database")
+        except Exception as e:
+            logger.error(f"Failed to save search config to storage: {e}")
 
     def to_dict(self) -> Dict[str, Any]:
         """Get current configuration (masks API keys)."""

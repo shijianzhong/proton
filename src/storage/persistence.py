@@ -373,6 +373,7 @@ class StorageManager:
     TEMPLATES = "templates"
     PLUGINS = "plugins"
     AGENTS = "agents"
+    CONFIGS = "configs"  # 全局配置存储 (email, search, copilot)
 
     def __init__(self, backend: StorageBackend):
         self.backend = backend
@@ -450,6 +451,38 @@ class StorageManager:
     async def list_plugin_configs(self) -> List[Dict[str, Any]]:
         """List all plugin configurations."""
         return await self.backend.list_all(self.PLUGINS)
+
+    # ============== Global Configs ==============
+
+    async def save_config(self, config_type: str, config_data: Dict[str, Any]) -> None:
+        """
+        Save global configuration.
+
+        Args:
+            config_type: Type of config ("email", "search", "copilot")
+            config_data: Configuration data
+        """
+        await self.backend.save(self.CONFIGS, config_type, config_data)
+
+    async def load_config(self, config_type: str) -> Optional[Dict[str, Any]]:
+        """
+        Load global configuration.
+
+        Args:
+            config_type: Type of config ("email", "search", "copilot")
+
+        Returns:
+            Configuration data or None if not found
+        """
+        return await self.backend.load(self.CONFIGS, config_type)
+
+    async def delete_config(self, config_type: str) -> bool:
+        """Delete global configuration."""
+        return await self.backend.delete(self.CONFIGS, config_type)
+
+    async def list_configs(self) -> List[Dict[str, Any]]:
+        """List all global configurations."""
+        return await self.backend.list_all(self.CONFIGS)
 
 
 # ============== Global Storage Instance ==============

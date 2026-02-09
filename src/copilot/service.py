@@ -239,7 +239,7 @@ class CopilotService:
 
         return self._client
 
-    def update_config(
+    async def update_config(
         self,
         provider: Optional[str] = None,
         model: Optional[str] = None,
@@ -247,7 +247,7 @@ class CopilotService:
         base_url: Optional[str] = None,
     ) -> None:
         """
-        Update copilot configuration at runtime.
+        Update copilot configuration at runtime and save to database.
 
         Args:
             provider: New provider to use (openai, zhipu, deepseek, etc.)
@@ -279,6 +279,52 @@ class CopilotService:
             f"CopilotService config updated: provider={self.provider}, model={self.model}, "
             f"base_url={self._base_url or 'default'}"
         )
+
+        # Save to database after update
+        await self.save_to_storage()
+
+    async def save_to_storage(self) -> None:
+        """Save current configuration to database."""
+        try:
+            from ..storage.persistence import get_storage_manager
+
+            storage = get_storage_manager()
+            await storage.initialize()
+
+            config_data = {
+                "provider": self.provider,
+                "model": self.model,
+                "api_key": self._api_key,
+                "base_url": self._base_url,
+            }
+
+            await storage.save_config("copilot", config_data)
+            logger.info("Copilot config saved to database")
+        except Exception as e:
+            logger.error(f"Failed to save copilot config to storage: {e}")
+
+    async def load_from_storage(self) -> None:
+        """Load configuration from database."""
+        try:
+            from ..storage.persistence import get_storage_manager
+
+            storage = get_storage_manager()
+            await storage.initialize()
+
+            saved_config = await storage.load_config("copilot")
+
+            if saved_config:
+                logger.info("Loading copilot config from database")
+                self.provider = saved_config.get("provider", self.provider)
+                self.model = saved_config.get("model", self.model)
+                self._api_key = saved_config.get("api_key", self._api_key)
+                self._base_url = saved_config.get("base_url", self._base_url)
+                # Reset client to use new config
+                self._client = None
+            else:
+                logger.info("No saved copilot config found")
+        except Exception as e:
+            logger.warning(f"Failed to load copilot config from storage: {e}")
 
     def get_config(self) -> Dict[str, Any]:
         """Get current copilot configuration (without exposing full API key)."""
