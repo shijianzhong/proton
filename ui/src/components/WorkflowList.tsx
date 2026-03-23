@@ -1,6 +1,7 @@
 import React, { useEffect, useState, FormEvent } from 'react';
 import { api, WorkflowTemplate, WorkflowTemplateDetail } from '../api/client';
 import styles from './WorkflowList.module.css';
+import { useToast } from './ToastProvider';
 
 interface Workflow {
   id: string;
@@ -54,11 +55,19 @@ const iconMap: Record<string, string> = {
 };
 
 const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
+  const toast = useToast();
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deletingWorkflow, setDeletingWorkflow] = useState<Workflow | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [runModalOpen, setRunModalOpen] = useState(false);
+  const [runningWorkflow, setRunningWorkflow] = useState<Workflow | null>(null);
+  const [runInput, setRunInput] = useState('');
+  const [isRunning, setIsRunning] = useState(false);
 
   // Workflow template states
   const [wfTemplateModalOpen, setWfTemplateModalOpen] = useState(false);
@@ -77,7 +86,7 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
       const data = await api.listWorkflows();
       setWorkflows(data);
     } catch (error) {
-      alert('加载工作流失败');
+      toast.error('加载工作流失败');
     } finally {
       setLoading(false);
     }
@@ -86,41 +95,65 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      await api.createWorkflow({ name: newName, description: newDescription });
-      alert('工作流已创建');
+      const workflow = await api.createWorkflow({ name: newName, description: newDescription });
+      toast.success('工作流已创建');
       setIsCreateModalOpen(false);
       setNewName('');
       setNewDescription('');
       loadWorkflows();
+      onSelect(workflow.id);
     } catch (error) {
-      alert('创建工作流失败');
+      toast.error('创建工作流失败');
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('确定要删除这个工作流吗？')) {
-      try {
-        await api.deleteWorkflow(id);
-        alert('工作流已删除');
-        loadWorkflows();
-      } catch (error) {
-        alert('删除工作流失败');
-      }
-    }
+  const requestDelete = (wf: Workflow) => {
+    setDeletingWorkflow(wf);
+    setDeleteModalOpen(true);
   };
 
-  const handleRun = async (id: string) => {
-    const input = prompt('请输入消息:');
-    if (!input) return;
-
+  const handleConfirmDelete = async () => {
+    if (!deletingWorkflow || isDeleting) return;
+    setIsDeleting(true);
     try {
-      const result = await api.runWorkflow(id, input);
-      alert(`工作流已执行: ${result.state}`);
-      if (result.output) {
-        alert(`输出:\n${result.output}`);
-      }
+      await api.deleteWorkflow(deletingWorkflow.id);
+      toast.success('工作流已删除');
+      setDeleteModalOpen(false);
+      setDeletingWorkflow(null);
+      loadWorkflows();
     } catch (error) {
-      alert('运行工作流失败');
+      toast.error('删除工作流失败');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const requestRun = (wf: Workflow) => {
+    setRunningWorkflow(wf);
+    setRunInput('');
+    setRunModalOpen(true);
+  };
+
+  const handleConfirmRun = async () => {
+    if (!runningWorkflow || isRunning) return;
+    if (!runInput.trim()) {
+      toast.warning('请输入消息');
+      return;
+    }
+    setIsRunning(true);
+    try {
+      const result = await api.runWorkflow(runningWorkflow.id, runInput);
+      toast.success(
+        '工作流已执行',
+        result.output ? `状态: ${result.state}\n\n输出:\n${result.output}` : `状态: ${result.state}`
+      );
+      setRunModalOpen(false);
+      setRunningWorkflow(null);
+      setRunInput('');
+    } catch (error) {
+      toast.error('运行工作流失败');
+    } finally {
+      setIsRunning(false);
     }
   };
 
@@ -130,7 +163,7 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
       setWfTemplates(templates);
       setWfTemplateModalOpen(true);
     } catch (error) {
-      alert('加载工作流模板失败');
+      toast.error('加载工作流模板失败');
     }
   };
 
@@ -140,7 +173,7 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
       setWfTemplateDetail(detail);
       setWfTemplateDetailOpen(true);
     } catch (error) {
-      alert('加载模板详情失败');
+      toast.error('加载模板详情失败');
     }
   };
 
@@ -151,10 +184,10 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
       setWfTemplateDetailOpen(false);
       setWfTemplateModalOpen(false);
       loadWorkflows();
-      alert(`工作流 "${result.name}" 已创建，包含 ${result.agent_count} 个 Agent！`);
+      toast.success('工作流已创建', `"${result.name}" · ${result.agent_count} 个 Agent`);
       onSelect(result.workflow_id);
     } catch (error) {
-      alert('从模板创建工作流失败');
+      toast.error('从模板创建工作流失败');
     } finally {
       setCreatingFromTemplate(false);
     }
@@ -204,8 +237,8 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
                   <td>{wf.agent_count}</td>
                   <td>{new Date(wf.updated_at).toLocaleString()}</td>
                   <td>
-                    <button className={styles.buttonLink} onClick={() => handleRun(wf.id)}>运行</button>
-                    <button className={`${styles.buttonLink} ${styles.buttonLinkDanger}`} onClick={() => handleDelete(wf.id)}>删除</button>
+                    <button className={styles.buttonLink} onClick={() => requestRun(wf)}>运行</button>
+                    <button className={`${styles.buttonLink} ${styles.buttonLinkDanger}`} onClick={() => requestDelete(wf)}>删除</button>
                   </td>
                 </tr>
               ))
@@ -246,6 +279,91 @@ const WorkflowList: React.FC<WorkflowListProps> = ({ onSelect }) => {
             <button type="submit" className={`${styles.button} ${styles.buttonPrimary}`}>创建</button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={runModalOpen}
+        onClose={() => {
+          if (isRunning) return;
+          setRunModalOpen(false);
+          setRunningWorkflow(null);
+          setRunInput('');
+        }}
+        title="运行工作流"
+      >
+        <div className={styles.formGroup}>
+          <label className={styles.formLabel}>工作流</label>
+          <div style={{ color: 'var(--color-text)', fontWeight: 700 }}>
+            {runningWorkflow?.name ?? ''}
+          </div>
+        </div>
+        <div className={styles.formGroup}>
+          <label className={styles.formLabel}>消息</label>
+          <textarea
+            className={styles.formTextarea}
+            rows={6}
+            value={runInput}
+            onChange={(e) => setRunInput(e.target.value)}
+            placeholder="请输入要发送给工作流的消息"
+          />
+        </div>
+        <div className={styles.modalFooter}>
+          <button
+            type="button"
+            className={styles.buttonLink}
+            onClick={() => {
+              if (isRunning) return;
+              setRunModalOpen(false);
+              setRunningWorkflow(null);
+              setRunInput('');
+            }}
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            className={`${styles.button} ${styles.buttonPrimary}`}
+            onClick={handleConfirmRun}
+            disabled={isRunning}
+          >
+            {isRunning ? '运行中...' : '运行'}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          if (isDeleting) return;
+          setDeleteModalOpen(false);
+          setDeletingWorkflow(null);
+        }}
+        title="删除工作流"
+      >
+        <p style={{ color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
+          将删除工作流 <b style={{ color: 'var(--color-text)' }}>{deletingWorkflow?.name ?? ''}</b>，此操作不可撤销。
+        </p>
+        <div className={styles.modalFooter}>
+          <button
+            type="button"
+            className={styles.buttonLink}
+            onClick={() => {
+              if (isDeleting) return;
+              setDeleteModalOpen(false);
+              setDeletingWorkflow(null);
+            }}
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            className={`${styles.button} ${styles.buttonDanger}`}
+            onClick={handleConfirmDelete}
+            disabled={isDeleting}
+          >
+            {isDeleting ? '删除中...' : '删除'}
+          </button>
+        </div>
       </Modal>
 
       {/* Workflow Templates Modal */}

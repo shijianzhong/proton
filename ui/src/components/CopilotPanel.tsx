@@ -32,7 +32,6 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
   const [configModel, setConfigModel] = useState('gpt-4');
   const [configBaseUrl, setConfigBaseUrl] = useState('');
   const [isSavingConfig, setIsSavingConfig] = useState(false);
-  const [isWorkflowLevel, setIsWorkflowLevel] = useState(false);
 
   // Load config on mount - workflow-level if workflowId provided, otherwise global
   useEffect(() => {
@@ -47,7 +46,6 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
           setConfigProvider(cfg.provider);
           setConfigModel(cfg.model);
           setConfigBaseUrl(cfg.base_url || '');
-          setIsWorkflowLevel(!!workflowId && cfg.is_workflow_level);
           // Only show config panel if global config is not set (when no workflowId)
           // For workflow-level, user can manually open config to override
           if (!workflowId && !cfg.api_key_configured) {
@@ -97,7 +95,6 @@ const CopilotPanel: React.FC<CopilotPanelProps> = ({
         : await api.updateCopilotConfig(configData);
 
       setConfig(result.config);
-      setIsWorkflowLevel(!!workflowId && result.config.is_workflow_level);
       setShowConfig(false);
       setConfigApiKey(''); // Clear for security
 

@@ -9,7 +9,7 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional, cast
 from uuid import uuid4
 
 from ..core.models import (
@@ -193,7 +193,7 @@ class CopilotService:
         self.model = model or config["model"]
         self._api_key = api_key or config["api_key"]
         self._base_url = base_url or config["base_url"]
-        self._client = None
+        self._client: Any = None
 
         logger.info(
             f"CopilotService initialized with provider={self.provider}, model={self.model}, "
@@ -201,7 +201,7 @@ class CopilotService:
             f"api_key={'configured' if self._api_key else 'NOT SET'}"
         )
 
-    def _get_client(self):
+    def _get_client(self) -> Any:
         """Get or create the OpenAI-compatible client."""
         if self._client is None:
             try:
@@ -337,6 +337,14 @@ class CopilotService:
             "api_key_preview": f"{self._api_key[:8]}..." if self._api_key and len(self._api_key) > 8 else None,
             "available_models": provider_config.get("models", []),
             "providers": list(PROVIDER_DEFAULTS.keys()),
+        }
+
+    def get_internal_config(self) -> Dict[str, Any]:
+        return {
+            "provider": self.provider,
+            "model": self.model,
+            "api_key": self._api_key,
+            "base_url": self._base_url,
         }
 
     def format_config(self, config_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -491,7 +499,8 @@ class CopilotService:
         """
         client = self._get_client()
 
-        response = await client.chat.completions.create(
+        client_any = cast(Any, client)
+        response = await client_any.chat.completions.create(
             model=self.model,
             messages=messages,
             tools=COPILOT_TOOL_DEFINITIONS,
@@ -519,20 +528,21 @@ class CopilotService:
             # Handle tool calls
             if delta.tool_calls:
                 for tc in delta.tool_calls:
-                    idx = tc.index
+                    tc_any = cast(Any, tc)
+                    idx = tc_any.index
                     if idx not in tool_calls_data:
                         tool_calls_data[idx] = {
-                            "id": tc.id or "",
+                            "id": tc_any.id or "",
                             "name": "",
                             "arguments": "",
                         }
 
-                    if tc.id:
-                        tool_calls_data[idx]["id"] = tc.id
-                    if tc.function and tc.function.name:
-                        tool_calls_data[idx]["name"] = tc.function.name
-                    if tc.function and tc.function.arguments:
-                        tool_calls_data[idx]["arguments"] += tc.function.arguments
+                    if tc_any.id:
+                        tool_calls_data[idx]["id"] = tc_any.id
+                    if getattr(tc_any, "function", None) and getattr(tc_any.function, "name", None):
+                        tool_calls_data[idx]["name"] = tc_any.function.name
+                    if getattr(tc_any, "function", None) and getattr(tc_any.function, "arguments", None):
+                        tool_calls_data[idx]["arguments"] += tc_any.function.arguments
 
         # Execute tool calls if any
         tool_messages = []
@@ -606,7 +616,8 @@ class CopilotService:
             messages.extend(tool_messages)
 
             # Get follow-up response
-            followup_response = await client.chat.completions.create(
+            client_any = cast(Any, client)
+            followup_response = await client_any.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 tools=COPILOT_TOOL_DEFINITIONS,
@@ -654,7 +665,9 @@ class CopilotService:
         """
         client = self._get_client()
 
-        response = await client.chat.completions.create(
+        create: Any = client.chat.completions.create
+        client_any = cast(Any, client)
+        response = await client_any.chat.completions.create(
             model=self.model,
             messages=messages,
             tools=COPILOT_TOOL_DEFINITIONS,
@@ -675,9 +688,10 @@ class CopilotService:
             tool_messages = []
 
             for tc in choice.message.tool_calls:
-                tool_name = tc.function.name
+                tc_any = cast(Any, tc)
+                tool_name = tc_any.function.name
                 try:
-                    arguments = json.loads(tc.function.arguments)
+                    arguments = json.loads(tc_any.function.arguments)
                 except json.JSONDecodeError:
                     arguments = {}
 
@@ -708,29 +722,32 @@ class CopilotService:
 
                 tool_messages.append({
                     "role": "tool",
-                    "tool_call_id": tc.id,
+                    "tool_call_id": tc_any.id,
                     "content": json.dumps(result, ensure_ascii=False),
                 })
 
             # Get follow-up response
+            tool_calls_payload = []
+            for tc in choice.message.tool_calls:
+                tc_any = cast(Any, tc)
+                tool_calls_payload.append({
+                    "id": tc_any.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc_any.function.name,
+                        "arguments": tc_any.function.arguments,
+                    },
+                })
+
             messages.append({
                 "role": "assistant",
                 "content": content or None,
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        }
-                    }
-                    for tc in choice.message.tool_calls
-                ],
+                "tool_calls": tool_calls_payload,
             })
             messages.extend(tool_messages)
 
-            followup = await client.chat.completions.create(
+            client_any = cast(Any, client)
+            followup = await client_any.chat.completions.create(
                 model=self.model,
                 messages=messages,
             )

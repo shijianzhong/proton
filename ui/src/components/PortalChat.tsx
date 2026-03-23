@@ -86,21 +86,8 @@ async function createSession(portalId: string, userId: string): Promise<string> 
 /*  Sub-components                                                      */
 /* ------------------------------------------------------------------ */
 
-const ThinkingBubble: React.FC = () => (
-  <div className={styles.msgRow}>
-    <div className={`${styles.avatar} ${styles.avatarAssistant}`}>🧠</div>
-    <div className={`${styles.bubble} ${styles.bubbleAssistant}`}>
-      <div className={styles.thinking}>
-        <div className={styles.dot} />
-        <div className={styles.dot} />
-        <div className={styles.dot} />
-      </div>
-    </div>
-  </div>
-);
-
 const EventCard: React.FC<{ msg: ChatMsg }> = ({ msg }) => {
-  const { eventType, meta, content } = msg;
+  const { eventType, meta } = msg;
 
   if (eventType === 'intent_understood' && meta?.intent) {
     const intent = meta.intent;

@@ -453,6 +453,7 @@ class TreeExecutor:
         )
 
         # ---- INTENT routing: emit a dedicated event ----
+        intent_result = None
         if node.routing_strategy == RoutingStrategy.INTENT:
             # Run intent routing; we'll get back a (possibly-reduced, sub-query-rewritten) child list
             intent_result, selected_children = await self._run_intent_routing(
@@ -478,6 +479,10 @@ class TreeExecutor:
             children_to_run = selected_children
             # Inject sub-queries into child_context messages
             self._inject_sub_queries(intent_result, child_context)
+            await self._execute_intent_children_with_events(
+                intent_result, children_to_run, child_context,
+                workflow_id, execution_id, depth, self
+            )
         else:
             children_to_run = children
 
@@ -489,19 +494,6 @@ class TreeExecutor:
             ]
             for child_iter in child_iterators:
                 async for event in child_iter:
-                    yield event
-        elif node.routing_strategy == RoutingStrategy.INTENT:
-            # Respect priority ordering from intent result
-            await self._execute_intent_children_with_events(
-                intent_result, children_to_run, child_context,
-                workflow_id, execution_id, depth, self
-            )
-            # yield events from the above is tricky with async generators;
-            # use sequential for events path (parallel for run path)
-            for child in children_to_run:
-                async for event in self._execute_node_with_events(
-                    child, child_context, workflow_id, execution_id, depth + 1
-                ):
                     yield event
         else:
             for child in children_to_run:
@@ -660,7 +652,11 @@ class TreeExecutor:
 
         messages = context.get_context_for_agent()
         try:
-            async for update in node.adapter.run_stream(messages=messages, context=context):
+            stream = node.adapter.run_stream(messages=messages, context=context)
+            if asyncio.iscoroutine(stream):
+                stream = await stream
+            assert not asyncio.iscoroutine(stream)
+            async for update in stream:
                 yield update
         except Exception as e:
             yield AgentResponseUpdate(delta_content=f"[Error: {e}]", is_complete=True)
@@ -827,10 +823,28 @@ class TreeExecutor:
         cfg = node.config.intent_routing_config if node.config else None
         llm_client = self._build_llm_client(node, cfg)
 
+        model = None
+        temperature = 0.2
+        if cfg:
+            model = cfg.model
+            temperature = cfg.temperature
+
+        if not model:
+            try:
+                from ..copilot import get_copilot_service
+
+                global_cfg = get_copilot_service().get_internal_config()
+                model = global_cfg.get("model")
+            except Exception:
+                model = None
+
+        if not model:
+            model = node.config.model if node.config else "gpt-4"
+
         intent_svc = IntentUnderstandingService(
             llm_client=llm_client,
-            model=cfg.model if cfg else (node.config.model if node.config else "gpt-4"),
-            temperature=cfg.temperature if cfg else 0.2,
+            model=model,
+            temperature=temperature,
         )
 
         # Build child descriptors
@@ -851,6 +865,7 @@ class TreeExecutor:
         max_sel = cfg.max_children_selected if cfg else 0
         fallback = cfg.fallback_to_all if cfg else True
 
+        intent_result = None
         try:
             intent_result = await intent_svc.understand(
                 user_query=user_query,
@@ -879,6 +894,8 @@ class TreeExecutor:
                 )
             else:
                 raise
+        if intent_result is None:
+            raise RuntimeError("Intent routing failed without fallback")
 
         # Map dispatch_plans back to AgentNode objects
         selected_ids = {p.workflow_id for p in intent_result.dispatch_plans}
@@ -908,6 +925,18 @@ class TreeExecutor:
         if not api_key and node.config and node.config.builtin_definition:
             api_key = node.config.builtin_definition.api_key
             base_url = base_url or node.config.builtin_definition.base_url
+
+        if not api_key or not base_url:
+            try:
+                from ..copilot import get_copilot_service
+
+                global_cfg = get_copilot_service().get_internal_config()
+                if not api_key:
+                    api_key = global_cfg.get("api_key")
+                if not base_url and global_cfg.get("base_url"):
+                    base_url = global_cfg.get("base_url")
+            except Exception:
+                pass
 
         if not api_key:
             api_key = os.environ.get("OPENAI_API_KEY")

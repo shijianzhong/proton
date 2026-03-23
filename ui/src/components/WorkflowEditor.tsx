@@ -19,6 +19,7 @@ import CopilotPanel from './CopilotPanel';
 import { api, AgentTemplate } from '../api/client';
 import styles from './WorkflowEditor.module.css';
 import listStyles from './WorkflowList.module.css'; // Re-use styles
+import { useToast } from './ToastProvider';
 
 // --- Reusable custom components ---
 const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }> = ({ isOpen, onClose, title, children }) => {
@@ -45,6 +46,7 @@ interface WorkflowEditorProps {
 }
 
 const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowCreated }) => {
+  const toast = useToast();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
@@ -103,7 +105,7 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
   const handleEditAgent = useCallback((agentId: string, agentType: string) => {
     // Use ref to get the latest workflowId
     if (!currentWorkflowIdRef.current) {
-      alert('请先保存工作流后再编辑 Agent 配置');
+      toast.info('请先保存工作流', '保存后才能编辑 Agent 配置');
       setNewWorkflowModalVisible(true);
       return;
     }
@@ -147,7 +149,7 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
       setNodes(flowNodes);
       setEdges(flowEdges);
     } catch (error) {
-      alert('加载工作流失败');
+      toast.error('加载工作流失败');
     }
   };
 
@@ -195,10 +197,10 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
           });
         }
       }
-      alert('工作流已保存');
+      toast.success('工作流已保存');
     } catch (error) {
       console.error('Failed to save workflow:', error);
-      alert('保存工作流失败');
+      toast.error('保存工作流失败');
     } finally {
       setIsSaving(false);
     }
@@ -227,10 +229,10 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
                     parent_id: parentEdge?.source,
                 });
             }
-            alert('工作流创建并保存成功');
+            toast.success('工作流创建并保存成功');
         } catch (error) {
             console.error('Failed to create workflow:', error);
-            alert('创建工作流失败');
+            toast.error('创建工作流失败');
         } finally {
             setIsSaving(false);
         }
@@ -238,7 +240,7 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
 
   const handleRunWorkflow = async () => {
     if (!currentWorkflowId) {
-      alert('请先保存工作流');
+      toast.info('请先保存工作流');
       return;
     }
     // Open the ExecutionPanel instead of using prompt/alert
@@ -250,12 +252,12 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
 
   const handleAddBlankAgent = useCallback(async () => {
     if (!newAgentName.trim()) {
-      alert('请输入 Agent 名称');
+      toast.warning('请输入 Agent 名称');
       return;
     }
     const wfId = currentWorkflowIdRef.current;
     if (!wfId) {
-      alert('请先保存工作流');
+      toast.info('请先保存工作流');
       setNewWorkflowModalVisible(true);
       setIsAddModalOpen(false);
       return;
@@ -288,14 +290,14 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
       setNewAgentType('builtin');
     } catch (error) {
       console.error('Failed to add agent:', error);
-      alert('添加 Agent 失败');
+      toast.error('添加 Agent 失败');
     }
   }, [newAgentName, newAgentDescription, newAgentType, nodes.length, handleEditAgent, handleDeleteAgent, setNodes]);
 
   const handleAddFromTemplate = useCallback(async (template: AgentTemplate) => {
     const wfId = currentWorkflowIdRef.current;
     if (!wfId) {
-      alert('请先保存工作流');
+      toast.info('请先保存工作流');
       setNewWorkflowModalVisible(true);
       setTemplateModalVisible(false);
       return;
@@ -321,7 +323,7 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
       setTemplateModalVisible(false);
     } catch (error) {
       console.error('Failed to add agent from template:', error);
-      alert('从模板添加 Agent 失败');
+      toast.error('从模板添加 Agent 失败');
     }
   }, [nodes.length, handleEditAgent, handleDeleteAgent, setNodes]);
 

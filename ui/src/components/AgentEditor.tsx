@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { api, AgentDefinition, BuiltinTool, ToolParameter, SystemTool } from '../api/client';
 import styles from './AgentEditor.module.css';
 import listStyles from './WorkflowList.module.css';
+import { useToast } from './ToastProvider';
 
 interface AgentEditorProps {
   visible: boolean;
@@ -36,7 +37,7 @@ interface Plugin {
 }
 
 const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId, agentType, onClose, onSave }) => {
-  const [definition, setDefinition] = useState<AgentDefinition | null>(null);
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('basic');
   const [formData, setFormData] = useState<Partial<AgentDefinition>>({});
@@ -116,7 +117,6 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
       loadSystemTools();
       loadAgentSkills();
     } else if (visible) {
-      setDefinition(null);
       setFormData({});
       setPlugins([]);
       setAgentSkills([]);
@@ -138,7 +138,6 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
     setLoading(true);
     try {
       const def = await api.getAgentDefinition(workflowId, agentId);
-      setDefinition(def);
       // Extract builtin_definition fields to formData for editing
       if (def.builtin_definition) {
         setFormData({
@@ -158,7 +157,6 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
       }
     } catch (error) {
       console.error('Failed to load definition:', error);
-      setDefinition(null);
       setFormData({});
     } finally {
       setLoading(false);
@@ -193,6 +191,17 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
     try {
       // Separate node-level fields from builtin_definition fields
       const { routing_strategy, max_depth, timeout, enabled, ...builtinFields } = formData;
+      const sanitizedBuiltinFields: any = { ...builtinFields };
+
+      if (sanitizedBuiltinFields.use_global_llm) {
+        delete sanitizedBuiltinFields.provider;
+        delete sanitizedBuiltinFields.model;
+        delete sanitizedBuiltinFields.base_url;
+        delete sanitizedBuiltinFields.api_key;
+      } else {
+        if (sanitizedBuiltinFields.base_url === '') delete sanitizedBuiltinFields.base_url;
+        if (sanitizedBuiltinFields.api_key === '') delete sanitizedBuiltinFields.api_key;
+      }
 
       // Build the update payload
       const updatePayload: any = {
@@ -207,13 +216,13 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
       if (enabled !== undefined) updatePayload.enabled = enabled;
 
       // Wrap builtin fields in builtin_definition
-      updatePayload.builtin_definition = builtinFields;
+      updatePayload.builtin_definition = sanitizedBuiltinFields;
 
       await api.updateAgentDefinition(workflowId, agentId, updatePayload);
-      alert('Agent definition saved');
+      toast.success('Agent definition saved');
       onSave();
     } catch (error) {
-      alert('Failed to save agent definition');
+      toast.error('Failed to save agent definition');
     } finally {
       setLoading(false);
     }
@@ -251,14 +260,14 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
         builtin_tools: (prev.builtin_tools || []).filter(t => t.name !== toolName)
       }));
     } catch (error) {
-      alert('Failed to delete tool');
+      toast.error('Failed to delete tool');
     }
   };
 
   const handleSaveTool = async () => {
     if (!workflowId || !agentId) return;
     if (!toolForm.name || !toolForm.description) {
-      alert('Tool name and description are required');
+      toast.warning('Tool name and description are required');
       return;
     }
 
@@ -267,7 +276,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
       setToolModalVisible(false);
       loadDefinition();
     } catch (error) {
-      alert('Failed to save tool');
+      toast.error('Failed to save tool');
     }
   };
 
@@ -279,7 +288,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
 
   const handleSaveParameter = () => {
     if (!paramForm.name) {
-      alert('Parameter name is required');
+      toast.warning('Parameter name is required');
       return;
     }
     setToolForm(prev => ({
@@ -330,9 +339,9 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
       }
       setPluginModalVisible(false);
       loadPlugins();
-      alert('Plugin registered successfully');
+      toast.success('Plugin registered successfully');
     } catch (error) {
-      alert('Failed to register plugin');
+      toast.error('Failed to register plugin');
     }
   };
 
@@ -345,17 +354,17 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
     try {
       const result = await api.uploadSkill(files[0]);
       setSkillUploadModalVisible(false);
-      alert('技能上传成功！');
+      toast.success('技能上传成功！');
       
       // Auto-bind the skill to current agent
       if (agentId) {
         await api.bindSkillToAgent(result.skill_id, agentId);
         loadAgentSkills();
-        alert('技能已自动绑定到当前Agent！');
+        toast.success('技能已自动绑定到当前 Agent！');
       }
     } catch (error) {
       console.error('Failed to upload skill:', error);
-      alert('技能上传失败，请检查文件格式是否正确');
+      toast.error('技能上传失败', '请检查文件格式是否正确');
     } finally {
       setSkillUploadLoading(false);
       // Reset file input
@@ -371,10 +380,10 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
     try {
       await api.unbindSkillFromAgent(skillId, agentId);
       loadAgentSkills();
-      alert('技能解绑成功');
+      toast.success('技能解绑成功');
     } catch (error) {
       console.error('Failed to unbind skill:', error);
-      alert('技能解绑失败');
+      toast.error('技能解绑失败');
     }
   };
 
@@ -384,7 +393,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
       await api.removePlugin(pluginId);
       loadPlugins();
     } catch (error) {
-      alert('Failed to delete plugin');
+      toast.error('Failed to delete plugin');
     }
   };
 
@@ -403,8 +412,17 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
       const result = await api.testAgent(workflowId, agentId, userMessage);
       let assistantContent = '';
 
-      if (result.response?.messages && result.response.messages.length > 0) {
-        assistantContent = result.response.messages.map((m: any) => m.content).join('\n');
+      const response = result.response;
+      if (
+        response &&
+        typeof response === 'object' &&
+        'messages' in response &&
+        Array.isArray((response as any).messages) &&
+        (response as any).messages.length > 0
+      ) {
+        assistantContent = (response as any).messages.map((m: any) => m.content).join('\n');
+      } else if (typeof response === 'string' && response.trim()) {
+        assistantContent = response;
       } else if (result.error) {
         assistantContent = `Error: ${result.error}`;
       } else {
@@ -431,7 +449,14 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
     setChatMessages([]);
   };
 
-  const tabs = ['基本', '模型', '提示词', '工具', '输出', '设置'];
+  const tabs = [
+    { label: '基本', key: 'basic' },
+    { label: '模型', key: 'model' },
+    { label: '提示词', key: 'prompts' },
+    { label: '工具', key: 'tools' },
+    { label: '输出', key: 'output' },
+    { label: '设置', key: 'settings' },
+  ];
 
   if (agentType !== 'builtin') {
     return (
@@ -455,12 +480,13 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
 
         <div className={styles.drawerBody}>
           <nav className={styles.tabNav}>
-            {tabs.map(tab => (
+            {tabs.map(({ label, key }) => (
               <button
-                key={tab}
-                className={`${styles.tabButton} ${activeTab === ['基本', '模型', '提示词', '工具', '输出', '设置'].indexOf(tab) === ['basic', 'model', 'prompts', 'tools', 'output', 'settings'].indexOf(activeTab) ? styles.tabButtonActive : ''}`}
-                onClick={() => setActiveTab(['basic', 'model', 'prompts', 'tools', 'output', 'settings'][['基本', '模型', '提示词', '工具', '输出', '设置'].indexOf(tab)])}>
-                {tab}
+                key={key}
+                className={`${styles.tabButton} ${activeTab === key ? styles.tabButtonActive : ''}`}
+                onClick={() => setActiveTab(key)}
+              >
+                {label}
               </button>
             ))}
           </nav>
@@ -517,8 +543,27 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
               <div className={`${styles.tabContent} ${activeTab === 'model' ? styles.tabContentActive : ''}`}>
                 <div className={styles.formSection}>
                   <div className={listStyles.formGroup}>
+                    <label className={listStyles.formLabel}>LLM 配置</label>
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--color-text)' }}>
+                      <input
+                        type="checkbox"
+                        name="use_global_llm"
+                        checked={formData.use_global_llm ?? true}
+                        onChange={handleFormChange}
+                      />
+                      使用系统设置中的全局配置
+                    </label>
+                    <small style={{ color: 'var(--color-text-muted)' }}>关闭后可为当前 Agent 单独配置（优先级高于全局）</small>
+                  </div>
+                  <div className={listStyles.formGroup}>
                     <label className={listStyles.formLabel}>服务商</label>
-                    <select name="provider" value={formData.provider || 'openai'} onChange={handleFormChange} className={listStyles.formInput}>
+                    <select
+                      name="provider"
+                      value={formData.provider || 'openai'}
+                      onChange={handleFormChange}
+                      className={listStyles.formInput}
+                      disabled={formData.use_global_llm ?? true}
+                    >
                       <option value="openai">OpenAI</option>
                       <option value="azure">Azure OpenAI</option>
                       <option value="anthropic">Anthropic</option>
@@ -533,7 +578,14 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                   </div>
                   <div className={listStyles.formGroup}>
                     <label className={listStyles.formLabel}>模型</label>
-                    <input name="model" value={formData.model || 'gpt-4'} onChange={handleFormChange} className={listStyles.formInput} placeholder="gpt-4, claude-3-opus, etc." />
+                    <input
+                      name="model"
+                      value={formData.model || 'gpt-4'}
+                      onChange={handleFormChange}
+                      className={listStyles.formInput}
+                      placeholder="gpt-4, claude-3-opus, etc."
+                      disabled={formData.use_global_llm ?? true}
+                    />
                   </div>
                   <div className={listStyles.formGroup}>
                     <label className={listStyles.formLabel}>API 地址</label>
@@ -542,6 +594,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                       value={formData.base_url || ''}
                       onChange={handleFormChange}
                       className={listStyles.formInput}
+                      disabled={formData.use_global_llm ?? true}
                       placeholder={
                         formData.provider === 'openai' ? 'https://api.openai.com/v1' :
                         formData.provider === 'anthropic' ? 'https://api.anthropic.com' :
@@ -565,6 +618,7 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                       value={formData.api_key || ''}
                       onChange={handleFormChange}
                       className={listStyles.formInput}
+                      disabled={formData.use_global_llm ?? true}
                       placeholder="sk-..."
                       autoComplete="off"
                     />

@@ -71,7 +71,7 @@ class AgentAdapter(ABC):
         pass
 
     @abstractmethod
-    async def run_stream(
+    def run_stream(
         self,
         messages: List[ChatMessage],
         context: ExecutionContext,

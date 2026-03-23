@@ -6,7 +6,7 @@
     height: 100%;
     background-color: var(--color-primary);
     border-left: 1px solid var(--color-secondary);
-    box-shadow: -5px 0 25px rgba(0,0,0,0.3);
+    box-shadow: var(--shadow-md);
     transform: translateX(100%);
     transition: transform 0.3s ease-in-out;
     display: flex;
@@ -21,6 +21,7 @@
 .drawerHeader {
     padding: 20px 24px;
     border-bottom: 1px solid var(--color-secondary);
+    background: var(--color-muted);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -42,6 +43,7 @@
 .drawerFooter {
     padding: 16px 24px;
     border-top: 1px solid var(--color-secondary);
+    background: var(--color-muted);
     display: flex;
     justify-content: flex-end;
     gap: 12px;
@@ -98,7 +100,7 @@
 .toolCard {
     background-color: var(--color-background);
     border: 1px solid var(--color-secondary);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 16px;
     margin-bottom: 12px;
 }
@@ -139,15 +141,16 @@
     flex: 1;
     overflow-y: auto;
     padding: 12px;
-    background: #0d0d1a;
-    border-radius: 8px;
+    background: var(--color-muted);
+    border: 1px solid var(--color-secondary);
+    border-radius: var(--radius-md);
     margin-bottom: 12px;
 }
 
 .chatBubble {
     max-width: 80%;
     padding: 10px 14px;
-    color: #fff;
+    color: var(--color-text);
     white-space: pre-wrap;
     word-break: break-word;
     font-size: 0.9rem;
@@ -156,12 +159,14 @@
 
 .chatBubbleUser {
     border-radius: 16px 16px 4px 16px;
-    background: var(--color-cta, #6366f1);
+    background: var(--color-cta);
+    color: #fff;
 }
 
 .chatBubbleAssistant {
     border-radius: 16px 16px 16px 4px;
-    background: #1e1e3f;
+    background: var(--color-background);
+    border: 1px solid var(--color-secondary);
 }
 
 .thinkingIndicator {

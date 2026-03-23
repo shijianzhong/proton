@@ -69,13 +69,14 @@ export interface BuiltinTool {
 }
 
 export interface OutputFormat {
-  format_type: 'text' | 'json' | 'markdown' | 'structured';
+  format_type?: 'text' | 'json' | 'markdown' | 'structured';
   json_schema?: any;
   structured_fields?: any[];
   example?: string;
 }
 
 export interface AgentDefinition {
+  [key: string]: any;
   name: string;
   description: string;
   avatar?: string;
@@ -105,6 +106,11 @@ export interface AgentDefinition {
   max_output_tokens: number;
   tags: string[];
   version: string;
+  builtin_definition?: Record<string, any>;
+  routing_strategy?: string;
+  max_depth?: number;
+  timeout?: number;
+  enabled?: boolean;
 }
 
 export interface AgentTemplate {
@@ -212,10 +218,10 @@ export interface ExecutionEvent {
 }
 
 export interface TestAgentResult {
-  response?: string;
+  response?: { messages?: Array<{ content: string }> } | string;
   error?: string;
-  messages: any[];
-  metadata: any;
+  messages?: any[];
+  metadata?: any;
 }
 
 // Copilot types

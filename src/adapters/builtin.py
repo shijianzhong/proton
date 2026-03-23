@@ -124,6 +124,24 @@ class BuiltinAgentAdapter(AgentAdapter):
                 max_tokens=self.node.config.max_tokens,
             )
 
+        if self._definition.use_global_llm:
+            try:
+                from ..copilot import get_copilot_service
+
+                copilot = get_copilot_service()
+                global_cfg = copilot.get_internal_config()
+
+                if global_cfg.get("provider"):
+                    self._definition.provider = global_cfg["provider"]
+                if global_cfg.get("model"):
+                    self._definition.model = global_cfg["model"]
+                if global_cfg.get("base_url") is not None:
+                    self._definition.base_url = global_cfg["base_url"]
+                if global_cfg.get("api_key"):
+                    self._definition.api_key = global_cfg["api_key"]
+            except Exception as e:
+                logger.warning(f"Failed to apply global LLM config for agent {self.node.id}: {e}")
+
         # Build tools registry (custom tools)
         for tool in self._definition.builtin_tools:
             self._tools_registry[tool.name] = tool
@@ -273,6 +291,8 @@ class BuiltinAgentAdapter(AgentAdapter):
                 final_response = agent_response
 
             if final_response is None:
+                if agent_response is None:
+                    raise RuntimeError("No agent response received")
                 final_response = agent_response
 
             # Validate and format output
@@ -320,6 +340,7 @@ class BuiltinAgentAdapter(AgentAdapter):
         max_tool_rounds = 5
 
         try:
+            agent_response = None
             for round_num in range(max_tool_rounds):
                 # Build request
                 request_kwargs = {
@@ -571,7 +592,7 @@ class BuiltinAgentAdapter(AgentAdapter):
                 required = []
 
                 for param in tool_def.parameters:
-                    param_schema = {
+                    param_schema: Dict[str, Any] = {
                         "type": param.type.value if hasattr(param.type, 'value') else str(param.type),
                         "description": param.description,
                     }
@@ -648,18 +669,19 @@ class BuiltinAgentAdapter(AgentAdapter):
 
         async with aiohttp.ClientSession() as session:
             method = tool_def.http_method.upper()
+            timeout = aiohttp.ClientTimeout(total=tool_def.timeout) if tool_def.timeout else None
 
             if method == "GET":
-                async with session.get(url, headers=headers, timeout=tool_def.timeout) as resp:
+                async with session.get(url, headers=headers, timeout=timeout) as resp:
                     return await resp.text()
             elif method == "POST":
-                async with session.post(url, headers=headers, json=body, timeout=tool_def.timeout) as resp:
+                async with session.post(url, headers=headers, json=body, timeout=timeout) as resp:
                     return await resp.text()
             elif method == "PUT":
-                async with session.put(url, headers=headers, json=body, timeout=tool_def.timeout) as resp:
+                async with session.put(url, headers=headers, json=body, timeout=timeout) as resp:
                     return await resp.text()
             elif method == "DELETE":
-                async with session.delete(url, headers=headers, timeout=tool_def.timeout) as resp:
+                async with session.delete(url, headers=headers, timeout=timeout) as resp:
                     return await resp.text()
             else:
                 return f"Unsupported HTTP method: {method}"

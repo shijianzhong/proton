@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import styles from './PortalList.module.css';
+import { useToast } from './ToastProvider';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -88,6 +89,7 @@ interface PortalModalProps {
 }
 
 const PortalModal: React.FC<PortalModalProps> = ({ portal, workflows, onClose, onSave }) => {
+  const toast = useToast();
   const [form, setForm] = useState<FormState>(() =>
     portal
       ? {
@@ -116,14 +118,14 @@ const PortalModal: React.FC<PortalModalProps> = ({ portal, workflows, onClose, o
   };
 
   const handleSave = async () => {
-    if (!form.name.trim()) { alert('请填写超级入口名称'); return; }
-    if (form.workflow_ids.length === 0) { alert('请至少选择一个工作流'); return; }
+    if (!form.name.trim()) { toast.warning('请填写超级入口名称'); return; }
+    if (form.workflow_ids.length === 0) { toast.warning('请至少选择一个工作流'); return; }
     setSaving(true);
     try {
       await onSave(form, portal?.id);
       onClose();
     } catch (e: any) {
-      alert(e?.message ?? '保存失败');
+      toast.error('保存失败', e?.message);
     } finally {
       setSaving(false);
     }

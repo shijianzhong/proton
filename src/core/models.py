@@ -241,6 +241,7 @@ class BuiltinAgentDefinition(BaseModel):
     category: str = "general"  # general, assistant, specialist, router
 
     # Model configuration
+    use_global_llm: bool = True
     provider: str = "openai"  # openai, azure, anthropic, ollama, local
     model: str = "gpt-4"
     base_url: Optional[str] = None  # Custom API base URL

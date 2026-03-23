@@ -423,9 +423,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, isPage 
           </div>
 
           {/* Resend Configuration */}
-          <div style={{ marginTop: '16px', padding: '12px', background: '#313244', borderRadius: '8px' }}>
-            <h4 style={{ margin: '0 0 12px 0', color: '#89b4fa' }}>Resend API (推荐)</h4>
-            <p style={{ fontSize: '12px', color: '#a6adc8', marginBottom: '12px' }}>
+          <div className={styles.subCard}>
+            <h4 className={`${styles.subCardTitle} ${styles.subCardTitleBlue}`}>Resend API (推荐)</h4>
+            <p className={styles.subCardDesc}>
               适合 Cloudflare 等自定义域名，在 resend.com 获取 API Key
             </p>
 
@@ -457,13 +457,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, isPage 
           </div>
 
           {/* SMTP Configuration */}
-          <div style={{ marginTop: '16px', padding: '12px', background: '#313244', borderRadius: '8px' }}>
-            <h4 style={{ margin: '0 0 12px 0', color: '#a6e3a1' }}>SMTP (传统方式)</h4>
-            <p style={{ fontSize: '12px', color: '#a6adc8', marginBottom: '12px' }}>
+          <div className={styles.subCard}>
+            <h4 className={`${styles.subCardTitle} ${styles.subCardTitleGreen}`}>SMTP (传统方式)</h4>
+            <p className={styles.subCardDesc}>
               适用于 Gmail、QQ邮箱、163邮箱、Outlook 等
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className={styles.grid2}>
               <div className={styles.formGroup}>
                 <label>SMTP 服务器</label>
                 <input
@@ -545,22 +545,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, isPage 
           </div>
 
           {/* Test Email */}
-          <div style={{ marginTop: '16px', padding: '12px', background: '#313244', borderRadius: '8px' }}>
-            <h4 style={{ margin: '0 0 12px 0', color: '#f9e2af' }}>发送测试邮件</h4>
-            <div style={{ display: 'flex', gap: '8px' }}>
+          <div className={styles.subCard}>
+            <h4 className={`${styles.subCardTitle} ${styles.subCardTitleAmber}`}>发送测试邮件</h4>
+            <div className={styles.row}>
               <input
                 type="email"
                 value={testEmailAddress}
                 onChange={(e) => setTestEmailAddress(e.target.value)}
                 placeholder="your_email@example.com"
-                style={{
-                  flex: 1,
-                  padding: '10px 12px',
-                  background: '#45475a',
-                  border: '1px solid #585b70',
-                  borderRadius: '6px',
-                  color: '#cdd6f4',
-                }}
+                className={styles.inlineInput}
               />
               <button
                 className={styles.testBtn}
@@ -586,7 +579,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ visible, onClose, isPage 
       return (
         <div className={styles.section}>
           <p className={styles.intro}>
-            配置 Workflow Copilot 使用的 LLM 服务商。此为全局默认配置，各工作流可单独覆盖。
+            配置全局 LLM 服务。Copilot、内置 Agent、意图路由等默认使用该配置；单个 Agent 如配置了自定义 LLM，则优先级高于全局。
           </p>
 
           <div className={styles.formGroup}>
