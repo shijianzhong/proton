@@ -1,0 +1,84 @@
+{
+  "skills": [
+    {
+      "id": "2b5b2524-ad57-4df8-9a5a-1b1053750c17",
+      "metadata": {
+        "name": "content-creator",
+        "description": "Creates engaging content for blogs, social media, and marketing materials with audience focus.\nUse when: writing blog posts, creating social media content, developing marketing copy, crafting\nengaging headlines, or when user mentions content creation, blogging, social media, or\naudience engagement.\n",
+        "version": "1.0.0",
+        "author": null,
+        "tags": [],
+        "entry_point": "skill.py",
+        "function_name": "execute",
+        "parameters_schema": null,
+        "approval_required": false,
+        "dependencies": [],
+        "icon": null
+      },
+      "package_path": "data/skills/2b5b2524-ad57-4df8-9a5a-1b1053750c17",
+      "installed_at": "2026-03-23 14:03:58.581381",
+      "enabled": true,
+      "agent_ids": []
+    },
+    {
+      "id": "4fea1b16-d3a5-4e0c-8b16-aea4fa71c57c",
+      "metadata": {
+        "name": "daily-trend-writer",
+        "description": "\u5168\u81ea\u52a8\u5316\u7684\u516c\u4f17\u53f7\u5185\u5bb9\u751f\u4ea7\u6d41\u6c34\u7ebf\u3002\u6bcf\u65e5\u53d1\u73b0\u5b9e\u7528\u5de5\u5177\u3001\u793e\u533a\u70ed\u70b9\u3001\u6559\u7a0b\u7ecf\u9a8c\u7b49\"\u5c0f\u800c\u7f8e\"\u9009\u9898\uff0c\u6df1\u6316\u540e\u8f93\u51fa\"\u54aa\u8499\u98ce\u683c\"\u4e0e\"\u6280\u672f\u5e72\u8d27\"\u4e24\u7bc7\u9ad8\u8d28\u91cf\u516c\u4f17\u53f7\u6587\u7ae0\u3002",
+        "version": "1.0.0",
+        "author": null,
+        "tags": [],
+        "entry_point": "skill.py",
+        "function_name": "execute",
+        "parameters_schema": null,
+        "approval_required": false,
+        "dependencies": [],
+        "icon": null
+      },
+      "package_path": "data/skills/4fea1b16-d3a5-4e0c-8b16-aea4fa71c57c",
+      "installed_at": "2026-03-23 14:12:36.313453",
+      "enabled": true,
+      "agent_ids": []
+    },
+    {
+      "id": "314db6e9-a630-46cc-b5d8-ac05180e0f73",
+      "metadata": {
+        "name": "doc-coauthoring",
+        "description": "Guide users through a structured workflow for co-authoring documentation. Use when user wants to write documentation, proposals, technical specs, decision docs, or similar structured content. This workflow helps users efficiently transfer context, refine content through iteration, and verify the doc works for readers. Trigger when user mentions writing docs, creating proposals, drafting specs, or similar documentation tasks.",
+        "version": "1.0.0",
+        "author": null,
+        "tags": [],
+        "entry_point": "skill.py",
+        "function_name": "execute",
+        "parameters_schema": null,
+        "approval_required": false,
+        "dependencies": [],
+        "icon": null
+      },
+      "package_path": "data/skills/314db6e9-a630-46cc-b5d8-ac05180e0f73",
+      "installed_at": "2026-03-23 14:12:43.583666",
+      "enabled": true,
+      "agent_ids": []
+    },
+    {
+      "id": "76f3e78c-e0ba-4479-8a1e-6d7c8dca6617",
+      "metadata": {
+        "name": "wechat-article-writer",
+        "description": "\u516c\u4f17\u53f7\u6587\u7ae0\u81ea\u52a8\u5316\u5199\u4f5c\u6d41\u7a0b\u3002\u652f\u6301\u8d44\u6599\u641c\u7d22\u3001\u6587\u7ae0\u64b0\u5199\u3001\u7206\u6b3e\u6807\u9898\u751f\u6210\u3001\u6392\u7248\u4f18\u5316\u3002\u5f53\u7528\u6237\u63d0\u5230\u5199\u516c\u4f17\u53f7\u3001\u5fae\u4fe1\u6587\u7ae0\u3001\u81ea\u5a92\u4f53\u5199\u4f5c\u3001\u7206\u6b3e\u6587\u7ae0\u3001\u5185\u5bb9\u521b\u4f5c\u65f6\u4f7f\u7528\u6b64 skill\u3002",
+        "version": "1.0.0",
+        "author": null,
+        "tags": [],
+        "entry_point": "skill.py",
+        "function_name": "execute",
+        "parameters_schema": null,
+        "approval_required": false,
+        "dependencies": [],
+        "icon": null
+      },
+      "package_path": "data/skills/76f3e78c-e0ba-4479-8a1e-6d7c8dca6617",
+      "installed_at": "2026-03-23 14:13:04.596725",
+      "enabled": true,
+      "agent_ids": []
+    }
+  ]
+}

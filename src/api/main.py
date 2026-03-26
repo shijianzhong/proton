@@ -168,6 +168,7 @@ class SearchConfigRequest(BaseModel):
     serper_api_key: Optional[str] = None
     brave_api_key: Optional[str] = None
     bing_api_key: Optional[str] = None
+    tavily_api_key: Optional[str] = None
     google_api_key: Optional[str] = None
     google_cx: Optional[str] = None
 
@@ -851,7 +852,10 @@ def create_app() -> FastAPI:
         try:
             # Install the skill
             skill_manager = get_skill_manager()
-            installed_skill = await skill_manager.install_skill(temp_file_path)
+            try:
+                installed_skill = await skill_manager.install_skill(temp_file_path)
+            except (ValueError, FileNotFoundError) as e:
+                raise HTTPException(status_code=400, detail=str(e))
 
             # Register the skill as a plugin
             plugin_registry = get_plugin_registry()
@@ -1756,6 +1760,7 @@ def create_app() -> FastAPI:
             serper_api_key=request.serper_api_key,
             brave_api_key=request.brave_api_key,
             bing_api_key=request.bing_api_key,
+            tavily_api_key=request.tavily_api_key,
             google_api_key=request.google_api_key,
             google_cx=request.google_cx,
         )

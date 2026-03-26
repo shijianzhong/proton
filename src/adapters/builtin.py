@@ -228,6 +228,7 @@ class BuiltinAgentAdapter(AgentAdapter):
             # Multi-turn tool calling loop
             max_tool_rounds = 5  # Prevent infinite loops
             final_response = None
+            agent_response = None
 
             for round_num in range(max_tool_rounds):
                 # Build request kwargs
@@ -439,7 +440,17 @@ class BuiltinAgentAdapter(AgentAdapter):
                         system_tool = self._system_tool_registry.get(tool_call.name)
                         if system_tool:
                             try:
-                                result = await system_tool.execute(**tool_call.arguments)
+                                result = await system_tool.execute(
+                                    **tool_call.arguments,
+                                    __agent_definition=self._definition,
+                                    __agent_node=self.node,
+                                    __execution_context=context,
+                                )
+                                tool_results.append(ToolResult(
+                                    tool_call_id=tool_call.id,
+                                    content=result,
+                                    is_error=False,
+                                ))
                                 tool_results.append(ToolResult(
                                     tool_call_id=tool_call.id,
                                     content=result,

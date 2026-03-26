@@ -50,6 +50,9 @@ BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY", "")
 # Bing Search (works in China)
 BING_API_KEY = os.environ.get("BING_API_KEY", "")
 
+# Tavily Search
+TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
+
 # Google Custom Search
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 GOOGLE_CX = os.environ.get("GOOGLE_CX", "")
@@ -70,6 +73,7 @@ class SearchConfig:
         self.serper_api_key = SERPER_API_KEY
         self.brave_api_key = BRAVE_API_KEY
         self.bing_api_key = BING_API_KEY
+        self.tavily_api_key = TAVILY_API_KEY
         self.google_api_key = GOOGLE_API_KEY
         self.google_cx = GOOGLE_CX
 
@@ -103,6 +107,7 @@ class SearchConfig:
                 instance.serper_api_key = saved_config.get("serper_api_key", instance.serper_api_key)
                 instance.brave_api_key = saved_config.get("brave_api_key", instance.brave_api_key)
                 instance.bing_api_key = saved_config.get("bing_api_key", instance.bing_api_key)
+                instance.tavily_api_key = saved_config.get("tavily_api_key", instance.tavily_api_key)
                 instance.google_api_key = saved_config.get("google_api_key", instance.google_api_key)
                 instance.google_cx = saved_config.get("google_cx", instance.google_cx)
             else:
@@ -120,6 +125,7 @@ class SearchConfig:
         serper_api_key: Optional[str] = None,
         brave_api_key: Optional[str] = None,
         bing_api_key: Optional[str] = None,
+        tavily_api_key: Optional[str] = None,
         google_api_key: Optional[str] = None,
         google_cx: Optional[str] = None,
     ) -> None:
@@ -134,6 +140,8 @@ class SearchConfig:
             self.brave_api_key = brave_api_key
         if bing_api_key is not None:
             self.bing_api_key = bing_api_key
+        if tavily_api_key is not None:
+            self.tavily_api_key = tavily_api_key
         if google_api_key is not None:
             self.google_api_key = google_api_key
         if google_cx is not None:
@@ -158,6 +166,7 @@ class SearchConfig:
                 "serper_api_key": self.serper_api_key,
                 "brave_api_key": self.brave_api_key,
                 "bing_api_key": self.bing_api_key,
+                "tavily_api_key": self.tavily_api_key,
                 "google_api_key": self.google_api_key,
                 "google_cx": self.google_cx,
             }
@@ -179,6 +188,8 @@ class SearchConfig:
             "brave_api_key_preview": f"{self.brave_api_key[:8]}..." if self.brave_api_key and len(self.brave_api_key) > 8 else None,
             "bing_configured": bool(self.bing_api_key),
             "bing_api_key_preview": f"{self.bing_api_key[:8]}..." if self.bing_api_key and len(self.bing_api_key) > 8 else None,
+            "tavily_configured": bool(self.tavily_api_key),
+            "tavily_api_key_preview": f"{self.tavily_api_key[:8]}..." if self.tavily_api_key and len(self.tavily_api_key) > 8 else None,
             "google_configured": bool(self.google_api_key and self.google_cx),
             "available_providers": self.get_available_providers(),
         }
@@ -218,6 +229,14 @@ class SearchConfig:
                 "configured": bool(self.brave_api_key),
                 "requires_api_key": True,
                 "china_accessible": False,
+            },
+            {
+                "id": "tavily",
+                "name": "Tavily Search",
+                "description": "深度搜索与聚合（需 API Key）",
+                "configured": bool(self.tavily_api_key),
+                "requires_api_key": True,
+                "china_accessible": True,
             },
             {
                 "id": "google",
@@ -751,6 +770,59 @@ class DuckDuckGoProvider(SearchProvider):
             return f"Error: DuckDuckGo search failed: {e}"
 
 
+class TavilyProvider(SearchProvider):
+    @property
+    def name(self) -> str:
+        return "Tavily"
+
+    def is_available(self) -> bool:
+        config = get_search_config()
+        return bool(getattr(config, "tavily_api_key", ""))
+
+    async def search(self, query: str, count: int = 5, locale: str = "zh-CN") -> str:
+        config = get_search_config()
+        api_key = getattr(config, "tavily_api_key", "")
+        if not api_key:
+            return "Error: Tavily API key not configured"
+
+        url = "https://api.tavily.com/search"
+        payload: Dict[str, Any] = {
+            "api_key": api_key,
+            "query": query,
+            "max_results": min(count, 10),
+            "search_depth": "advanced",
+            "include_answer": False,
+            "include_images": False,
+            "include_raw_content": False,
+        }
+        if locale.startswith("zh"):
+            payload["include_domains"] = []
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload, timeout=30) as resp:
+                    if resp.status != 200:
+                        text = await resp.text()
+                        return f"Error: Tavily returned status {resp.status}: {text[:200]}"
+
+                    data = await resp.json()
+                    results = data.get("results", []) or []
+                    if not results:
+                        return "No results found"
+
+                    output = []
+                    for i, r in enumerate(results[:count], 1):
+                        title = r.get("title") or "No title"
+                        result_url = r.get("url") or ""
+                        snippet = (r.get("content") or "").strip()
+                        output.append(f"{i}. {title}\n   URL: {result_url}\n   {snippet}")
+
+                    return "\n\n".join(output)
+        except Exception as e:
+            logger.error(f"Tavily search error: {e}")
+            return f"Error: Tavily search failed: {e}"
+
+
 # ============== Helper Functions ==============
 
 def _get_ssl_context():
@@ -774,6 +846,7 @@ SEARCH_PROVIDERS: List[SearchProvider] = [
     SearXNGProvider(),    # Self-hosted, recommended for quality
     SerperProvider(),     # Google API (paid)
     BraveProvider(),      # Brave API (paid)
+    TavilyProvider(),     # Deep search (paid)
     GoogleProvider(),     # Google Custom Search (may not work in China)
     DuckDuckGoProvider(), # Free fallback
 ]
@@ -784,6 +857,7 @@ PROVIDER_MAP: Dict[str, SearchProvider] = {
     "searxng": SearXNGProvider(),
     "serper": SerperProvider(),
     "brave": BraveProvider(),
+    "tavily": TavilyProvider(),
     "google": GoogleProvider(),
     "duckduckgo": DuckDuckGoProvider(),
 }
@@ -860,9 +934,9 @@ class WebSearchTool(SystemTool):
             ToolParameterSchema(
                 name="provider",
                 type="string",
-                description="Specific provider to use (searxng/serper/brave/bing/google/duckduckgo)",
+                description="Specific provider to use (searxng/serper/brave/bing/tavily/google/duckduckgo)",
                 required=False,
-                enum=["searxng", "serper", "brave", "bing", "google", "duckduckgo"],
+                enum=["searxng", "serper", "brave", "bing", "tavily", "google", "duckduckgo"],
             ),
         ]
 
@@ -880,19 +954,72 @@ class WebSearchTool(SystemTool):
             return "Error: query is required"
 
         try:
-            # Get provider
             if provider_name and provider_name in PROVIDER_MAP:
                 provider = PROVIDER_MAP[provider_name]
                 if not provider.is_available():
                     return f"Error: Provider '{provider_name}' is not configured"
-            else:
-                provider = get_search_provider()
+                logger.info(f"Using search provider: {provider.name}")
+                result = await provider.search(query, count, locale)
+                return f"[{provider.name}]\n\n{result}"
 
-            logger.info(f"Using search provider: {provider.name}")
-            result = await provider.search(query, count, locale)
+            agent_def = kwargs.get("__agent_definition")
+            use_global = True
+            strategy_mode = "bing_then_tavily"
+            deep_trigger = "auto"
+            bing_count = count
+            tavily_count = min(max(count, 5), 10)
+            strategy_locale = locale
 
-            # Add provider info to result
-            return f"[{provider.name}]\n\n{result}"
+            if agent_def is not None:
+                try:
+                    use_global = bool(getattr(agent_def, "use_global_search_config", True))
+                    if not use_global and getattr(agent_def, "search_strategy", None):
+                        cfg = getattr(agent_def, "search_strategy")
+                        strategy_mode = getattr(cfg, "strategy_mode", strategy_mode)
+                        deep_trigger = getattr(cfg, "deep_search_trigger", deep_trigger)
+                        strategy_locale = getattr(cfg, "locale", strategy_locale)
+                        bing_count = int(getattr(cfg, "bing_count", bing_count))
+                        tavily_count = int(getattr(cfg, "tavily_count", tavily_count))
+                except Exception:
+                    pass
+
+            strategy_locale = strategy_locale or locale
+            bing_count = min(max(bing_count, 1), 10)
+            tavily_count = min(max(tavily_count, 1), 10)
+
+            bing_provider = PROVIDER_MAP["bing"]
+            bing_result = await bing_provider.search(query, bing_count, strategy_locale)
+
+            def _result_count(text: str) -> int:
+                return text.count("\n   URL:") + (1 if "URL:" in text else 0)
+
+            should_deep = False
+            if strategy_mode in ("bing_then_tavily", "auto"):
+                if strategy_mode == "bing_then_tavily":
+                    should_deep = True
+                else:
+                    if deep_trigger == "always":
+                        should_deep = True
+                    elif deep_trigger == "insufficient_results":
+                        should_deep = _result_count(bing_result) < min(3, bing_count)
+                    elif deep_trigger == "conflict_detected":
+                        should_deep = False
+                    elif deep_trigger == "needs_citation":
+                        should_deep = _result_count(bing_result) < min(5, bing_count)
+                    else:
+                        should_deep = _result_count(bing_result) < min(3, bing_count) or "No results found" in bing_result
+
+            sections = [f"[Bing]\n\n{bing_result}"]
+
+            if should_deep:
+                tavily_provider = PROVIDER_MAP.get("tavily")
+                if tavily_provider and tavily_provider.is_available():
+                    tavily_result = await tavily_provider.search(query, tavily_count, strategy_locale)
+                    sections.append(f"[Tavily]\n\n{tavily_result}")
+                else:
+                    sections.append("[Tavily]\n\nError: Tavily is not configured (set TAVILY_API_KEY or /api/search/config)")
+
+            return "\n\n".join(sections)
 
         except Exception as e:
             logger.error(f"Web search error: {e}")
@@ -967,6 +1094,27 @@ class WebFetchTool(SystemTool):
 
         return text[:max_length]
 
+    async def _browser_fetch_text(self, url: str, max_length: int) -> str:
+        try:
+            from playwright.async_api import async_playwright
+        except Exception:
+            return "Error: Browser automation not available (install playwright)"
+
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+                await page.goto(url, wait_until="networkidle", timeout=45000)
+                text = await page.evaluate("() => document.body ? document.body.innerText : ''")
+                await browser.close()
+                text = (text or "").strip()
+                if not text:
+                    return "Error: Browser automation could not extract content"
+                return text[:max_length]
+        except Exception as e:
+            logger.error(f"Browser fetch error: {e}")
+            return f"Error: Browser automation failed: {e}"
+
     async def execute(self, **kwargs: Any) -> str:
         url = kwargs.get("url", "")
         max_length = kwargs.get("max_length", 10000)
@@ -989,10 +1137,23 @@ class WebFetchTool(SystemTool):
                 "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             }
 
+            agent_def = kwargs.get("__agent_definition")
+            use_browser_fallback = False
+            if agent_def is not None:
+                try:
+                    if not bool(getattr(agent_def, "use_global_search_config", True)) and getattr(agent_def, "search_strategy", None):
+                        cfg = getattr(agent_def, "search_strategy")
+                        use_browser_fallback = bool(getattr(cfg, "use_browser_fallback", False))
+                except Exception:
+                    pass
+
             ssl_context = _get_ssl_context()
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, headers=headers, timeout=30, allow_redirects=True, ssl=ssl_context) as resp:
                     if resp.status != 200:
+                        if use_browser_fallback and resp.status in (401, 403, 429):
+                            text = await self._browser_fetch_text(url, max_length)
+                            return f"Content from {url}:\n\n{text}"
                         return f"Error: HTTP {resp.status} - {resp.reason}"
 
                     content_type = resp.headers.get("Content-Type", "")
@@ -1000,9 +1161,17 @@ class WebFetchTool(SystemTool):
                         return f"Error: URL does not return HTML content (got {content_type})"
 
                     html = await resp.text()
+                    if use_browser_fallback:
+                        lowered = html.lower()
+                        if "captcha" in lowered or "verify you are human" in lowered or "access denied" in lowered:
+                            text = await self._browser_fetch_text(url, max_length)
+                            return f"Content from {url}:\n\n{text}"
                     text = self._extract_text(html, max_length)
 
                     if not text:
+                        if use_browser_fallback:
+                            browser_text = await self._browser_fetch_text(url, max_length)
+                            return f"Content from {url}:\n\n{browser_text}"
                         return "Error: Could not extract content from page"
 
                     # Add source info

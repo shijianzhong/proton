@@ -82,6 +82,9 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
   const [skillUploadLoading, setSkillUploadLoading] = useState(false);
   const [agentSkills, setAgentSkills] = useState<any[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
+  const [allSkills, setAllSkills] = useState<any[]>([]);
+  const [allSkillsLoading, setAllSkillsLoading] = useState(false);
+  const [skillBindingLoadingId, setSkillBindingLoadingId] = useState<string | null>(null);
 
   // System tools state
   const [systemTools, setSystemTools] = useState<Record<string, SystemTool[]>>({});
@@ -110,16 +113,30 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
     }
   };
 
+  const loadAllSkills = async () => {
+    setAllSkillsLoading(true);
+    try {
+      const skills = await api.listSkills();
+      setAllSkills(skills);
+    } catch (error) {
+      console.error('Failed to load skills:', error);
+    } finally {
+      setAllSkillsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (visible && workflowId && agentId && agentType === 'builtin') {
       loadDefinition();
       loadPlugins();
       loadSystemTools();
       loadAgentSkills();
+      loadAllSkills();
     } else if (visible) {
       setFormData({});
       setPlugins([]);
       setAgentSkills([]);
+      setAllSkills([]);
     }
   }, [visible, workflowId, agentId, agentType]);
 
@@ -201,6 +218,30 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
       } else {
         if (sanitizedBuiltinFields.base_url === '') delete sanitizedBuiltinFields.base_url;
         if (sanitizedBuiltinFields.api_key === '') delete sanitizedBuiltinFields.api_key;
+      }
+
+      if (sanitizedBuiltinFields.use_global_search_config) {
+        delete sanitizedBuiltinFields.search_strategy;
+      } else {
+        if (!sanitizedBuiltinFields.search_strategy) {
+          sanitizedBuiltinFields.search_strategy = {
+            use_browser_fallback: false,
+            strategy_mode: 'bing_then_tavily',
+            deep_search_trigger: 'auto',
+            locale: 'zh-CN',
+            bing_count: 5,
+            tavily_count: 8,
+            max_total_calls: 12,
+          };
+        } else {
+          const s = sanitizedBuiltinFields.search_strategy;
+          sanitizedBuiltinFields.search_strategy = {
+            ...s,
+            bing_count: Number(s.bing_count) || 5,
+            tavily_count: Number(s.tavily_count) || 8,
+            max_total_calls: Number(s.max_total_calls) || 12,
+          };
+        }
       }
 
       // Build the update payload
@@ -352,16 +393,11 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
 
     setSkillUploadLoading(true);
     try {
-      const result = await api.uploadSkill(files[0]);
+      await api.uploadSkill(files[0]);
       setSkillUploadModalVisible(false);
       toast.success('技能上传成功！');
-      
-      // Auto-bind the skill to current agent
-      if (agentId) {
-        await api.bindSkillToAgent(result.skill_id, agentId);
-        loadAgentSkills();
-        toast.success('技能已自动绑定到当前 Agent！');
-      }
+      loadAllSkills();
+      toast.info('技能已加入全局技能库', '在当前 Agent 中勾选即可使用');
     } catch (error) {
       console.error('Failed to upload skill:', error);
       toast.error('技能上传失败', '请检查文件格式是否正确');
@@ -374,9 +410,9 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
 
   const handleUnbindSkill = async (skillId: string) => {
     if (!agentId) return;
-    
-    if (!confirm('确定要解绑这个技能吗？')) return;
-    
+    if (skillBindingLoadingId) return;
+
+    setSkillBindingLoadingId(skillId);
     try {
       await api.unbindSkillFromAgent(skillId, agentId);
       loadAgentSkills();
@@ -384,6 +420,25 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
     } catch (error) {
       console.error('Failed to unbind skill:', error);
       toast.error('技能解绑失败');
+    } finally {
+      setSkillBindingLoadingId(null);
+    }
+  };
+
+  const handleBindSkill = async (skillId: string) => {
+    if (!agentId) return;
+    if (skillBindingLoadingId) return;
+
+    setSkillBindingLoadingId(skillId);
+    try {
+      await api.bindSkillToAgent(skillId, agentId);
+      loadAgentSkills();
+      toast.success('技能绑定成功');
+    } catch (error) {
+      console.error('Failed to bind skill:', error);
+      toast.error('技能绑定失败');
+    } finally {
+      setSkillBindingLoadingId(null);
     }
   };
 
@@ -697,6 +752,176 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
 
               {/* Tools Tab */}
               <div className={`${styles.tabContent} ${activeTab === 'tools' ? styles.tabContentActive : ''}`}>
+                <div className={styles.formSection}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <h4 style={{ margin: 0 }}>搜索策略</h4>
+                  </div>
+                  <div className={listStyles.formGroup}>
+                    <label className={listStyles.formLabel}>使用全局配置</label>
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--color-text)' }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.use_global_search_config ?? true}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setFormData((prev) => {
+                            const next: any = { ...prev, use_global_search_config: checked };
+                            if (!checked && !next.search_strategy) {
+                              next.search_strategy = {
+                                use_browser_fallback: false,
+                                strategy_mode: 'bing_then_tavily',
+                                deep_search_trigger: 'auto',
+                                locale: 'zh-CN',
+                                bing_count: 5,
+                                tavily_count: 8,
+                                max_total_calls: 12,
+                              };
+                            }
+                            return next;
+                          });
+                        }}
+                      />
+                      使用系统设置中的默认搜索配置
+                    </label>
+                    <small style={{ color: 'var(--color-text-muted)' }}>
+                      关闭后可为当前 Agent 单独配置（优先级高于全局）
+                    </small>
+                  </div>
+
+                  {!(formData.use_global_search_config ?? true) && (
+                    <>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div className={listStyles.formGroup}>
+                          <label className={listStyles.formLabel}>策略</label>
+                          <select
+                            value={(formData as any).search_strategy?.strategy_mode || 'bing_then_tavily'}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setFormData((prev) => ({
+                                ...prev,
+                                search_strategy: {
+                                  ...(prev as any).search_strategy,
+                                  strategy_mode: value,
+                                },
+                              }));
+                            }}
+                            className={listStyles.formInput}
+                          >
+                            <option value="bing_then_tavily">Bing → Tavily</option>
+                            <option value="bing_only">仅 Bing</option>
+                            <option value="tavily_only">仅 Tavily</option>
+                            <option value="auto">自动升级</option>
+                          </select>
+                        </div>
+                        <div className={listStyles.formGroup}>
+                          <label className={listStyles.formLabel}>语言</label>
+                          <select
+                            value={(formData as any).search_strategy?.locale || 'zh-CN'}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setFormData((prev) => ({
+                                ...prev,
+                                search_strategy: {
+                                  ...(prev as any).search_strategy,
+                                  locale: value,
+                                },
+                              }));
+                            }}
+                            className={listStyles.formInput}
+                          >
+                            <option value="zh-CN">中文</option>
+                            <option value="en-US">English</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div className={listStyles.formGroup}>
+                          <label className={listStyles.formLabel}>Bing 条数</label>
+                          <input
+                            type="number"
+                            value={(formData as any).search_strategy?.bing_count ?? 5}
+                            onChange={(e) => {
+                              const value = Number(e.target.value);
+                              setFormData((prev) => ({
+                                ...prev,
+                                search_strategy: {
+                                  ...(prev as any).search_strategy,
+                                  bing_count: value,
+                                },
+                              }));
+                            }}
+                            className={listStyles.formInput}
+                          />
+                        </div>
+                        <div className={listStyles.formGroup}>
+                          <label className={listStyles.formLabel}>Tavily 条数</label>
+                          <input
+                            type="number"
+                            value={(formData as any).search_strategy?.tavily_count ?? 8}
+                            onChange={(e) => {
+                              const value = Number(e.target.value);
+                              setFormData((prev) => ({
+                                ...prev,
+                                search_strategy: {
+                                  ...(prev as any).search_strategy,
+                                  tavily_count: value,
+                                },
+                              }));
+                            }}
+                            className={listStyles.formInput}
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div className={listStyles.formGroup}>
+                          <label className={listStyles.formLabel}>深挖触发</label>
+                          <select
+                            value={(formData as any).search_strategy?.deep_search_trigger || 'auto'}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setFormData((prev) => ({
+                                ...prev,
+                                search_strategy: {
+                                  ...(prev as any).search_strategy,
+                                  deep_search_trigger: value,
+                                },
+                              }));
+                            }}
+                            className={listStyles.formInput}
+                          >
+                            <option value="auto">自动</option>
+                            <option value="always">总是深挖</option>
+                            <option value="insufficient_results">结果不足</option>
+                            <option value="needs_citation">需要引用</option>
+                          </select>
+                        </div>
+                        <div className={listStyles.formGroup}>
+                          <label className={listStyles.formLabel}>浏览器兜底</label>
+                          <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--color-text)' }}>
+                            <input
+                              type="checkbox"
+                              checked={(formData as any).search_strategy?.use_browser_fallback ?? false}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  search_strategy: {
+                                    ...(prev as any).search_strategy,
+                                    use_browser_fallback: checked,
+                                  },
+                                }));
+                              }}
+                            />
+                            允许在反爬/登录页面时使用浏览器自动化
+                          </label>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
                 {/* Smart warning: detect tools mentioned in prompts but not enabled */}
                 {(() => {
                   const allToolNames = Object.values(systemTools).flat().map(t => t.name);
@@ -905,27 +1130,61 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                     </div>
                   </div>
 
-                  {/* Uploaded Skills Section */}
+                  {/* Global Skills Section */}
                   <div style={{ marginBottom: '20px' }}>
-                    <h5 style={{ margin: '0 0 12px 0', fontSize: '0.9rem' }}>已绑定的技能包</h5>
-                    {skillsLoading ? (
+                    <h5 style={{ margin: '0 0 12px 0', fontSize: '0.9rem' }}>全局技能库</h5>
+                    <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '12px' }}>
+                      技能包为全局安装；在每个 Agent 中勾选启用即可使用。
+                    </p>
+
+                    {allSkillsLoading || skillsLoading ? (
                       <p style={{ color: '#888' }}>加载中...</p>
-                    ) : agentSkills.length === 0 ? (
-                      <p style={{ color: '#888' }}>暂无绑定的技能包</p>
+                    ) : allSkills.length === 0 ? (
+                      <p style={{ color: '#888' }}>暂无已安装技能</p>
                     ) : (
-                      agentSkills.map((skill) => (
-                        <div key={skill.id} className={styles.toolCard}>
-                          <div className={styles.toolHeader}>
-                            <div className={styles.toolTitle}>
-                              <span>{skill.name}</span>
-                              <span style={{ fontSize: '0.75rem', padding: '2px 8px', background: '#3182ce', borderRadius: '4px' }}>Skill Package</span>
+                      allSkills.map((skill) => {
+                        const isBound = agentSkills.some((s) => s.id === skill.id);
+                        const isBusy = skillBindingLoadingId === skill.id;
+                        return (
+                          <div
+                            key={skill.id}
+                            className={styles.toolCard}
+                            style={{
+                              cursor: isBusy ? 'not-allowed' : 'pointer',
+                              opacity: isBusy ? 0.7 : 1,
+                              border: isBound ? '1px solid var(--color-cta)' : '1px solid var(--color-secondary)',
+                              background: isBound ? 'rgba(22, 163, 74, 0.06)' : undefined,
+                            }}
+                            onClick={() => {
+                              if (isBusy) return;
+                              if (isBound) handleUnbindSkill(skill.id);
+                              else handleBindSkill(skill.id);
+                            }}
+                          >
+                            <div className={styles.toolHeader}>
+                              <div className={styles.toolTitle}>
+                                <input
+                                  type="checkbox"
+                                  checked={isBound}
+                                  onChange={() => {}}
+                                  style={{ marginRight: '8px' }}
+                                />
+                                <span>{skill.name}</span>
+                                <span style={{ fontSize: '0.75rem', padding: '2px 8px', background: '#3182ce', borderRadius: '4px' }}>
+                                  Skill Package
+                                </span>
+                              </div>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                {isBusy ? '处理中...' : (isBound ? '已启用' : '未启用')}
+                              </span>
                             </div>
-                            <button type="button" className={listStyles.buttonLink} style={{ color: '#f56565' }} onClick={() => handleUnbindSkill(skill.id)}>解绑</button>
+                            <p className={styles.toolDescription}>{skill.description}</p>
+                            <p style={{ fontSize: '0.75rem', color: '#666' }}>
+                              版本: {skill.version} | 安装时间: {new Date(skill.installed_at).toLocaleString()}
+                            </p>
                           </div>
-                          <p className={styles.toolDescription}>{skill.description}</p>
-                          <p style={{ fontSize: '0.75rem', color: '#666' }}>版本: {skill.version} | 安装时间: {new Date(skill.installed_at).toLocaleString()}</p>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
 

@@ -4,9 +4,6 @@ const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const client = axios.create({
   baseURL: BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 export interface Workflow {
@@ -309,6 +306,8 @@ export interface SearchConfig {
   brave_api_key_preview: string | null;
   bing_configured: boolean;
   bing_api_key_preview: string | null;
+  tavily_configured?: boolean;
+  tavily_api_key_preview?: string | null;
   google_configured: boolean;
   available_providers: SearchProviderInfo[];
 }
@@ -524,9 +523,7 @@ export const api = {
   async uploadSkill(file: File): Promise<any> {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await client.post('/api/skills/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    const response = await client.post('/api/skills/upload', formData);
     return response.data;
   },
 
@@ -639,7 +636,7 @@ export const api = {
 
   async updateSearchConfig(config: {
     provider?: string; searxng_base_url?: string; serper_api_key?: string;
-    brave_api_key?: string; bing_api_key?: string; google_api_key?: string; google_cx?: string;
+    brave_api_key?: string; bing_api_key?: string; tavily_api_key?: string; google_api_key?: string; google_cx?: string;
   }): Promise<{ status: string; config: SearchConfig }> {
     const response = await client.post('/api/search/config', config);
     return response.data;

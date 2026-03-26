@@ -4,14 +4,13 @@ Skill package parser for .zip and .skill files.
 Parses SKILL.md metadata and extracts skill packages.
 """
 
-import os
 import yaml
 import zipfile
 import tempfile
 import shutil
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, cast
 from uuid import uuid4
 
 from ..core.models import SkillPackageMetadata, InstalledSkill
@@ -59,8 +58,10 @@ class SkillParser:
             # Extract package
             self._extract_package(file_path, temp_dir)
 
+            package_root = self._find_package_root(temp_dir)
+
             # Parse SKILL.md
-            metadata = self._parse_skill_md(temp_dir)
+            metadata = self._parse_skill_md(package_root)
 
             # Generate unique skill ID
             skill_id = str(uuid4())
@@ -70,7 +71,7 @@ class SkillParser:
             skill_dir.mkdir(parents=True, exist_ok=True)
 
             # Copy files to permanent location
-            self._copy_skill_files(temp_dir, skill_dir)
+            self._copy_skill_files(package_root, str(skill_dir))
 
             # Create InstalledSkill object
             installed_skill = InstalledSkill(
@@ -82,6 +83,21 @@ class SkillParser:
             logger.info(f"Installed skill: {metadata.name} (ID: {skill_id})")
             return installed_skill
 
+    def _find_package_root(self, extracted_dir: str) -> str:
+        root = Path(extracted_dir)
+        if (root / "SKILL.md").exists():
+            return str(root)
+
+        candidates = list(root.glob("*/SKILL.md"))
+        if len(candidates) == 1:
+            return str(candidates[0].parent)
+
+        if len(candidates) > 1:
+            parents = ", ".join(sorted({c.parent.name for c in candidates}))
+            raise ValueError(f"Multiple SKILL.md found in package: {parents}")
+
+        raise ValueError("SKILL.md not found in package root (or a single top-level folder)")
+
     def _extract_package(self, file_path: str, extract_to: str) -> None:
         """
         Extract .zip or .skill file.
@@ -90,14 +106,14 @@ class SkillParser:
             file_path: Path to the package file
             extract_to: Directory to extract to
         """
-        file_path = Path(file_path)
+        file_path_obj = cast(Any, Path(file_path))
 
-        if not file_path.exists():
-            raise FileNotFoundError(f"Skill package not found: {file_path}")
+        if not file_path_obj.exists():
+            raise FileNotFoundError(f"Skill package not found: {file_path_obj}")
 
         # Both .zip and .skill are treated as zip archives
-        if file_path.suffix in ['.zip', '.skill']:
-            with zipfile.ZipFile(file_path, 'r') as zip_ref:
+        if file_path_obj.suffix in ['.zip', '.skill']:
+            with zipfile.ZipFile(file_path_obj, 'r') as zip_ref:
                 # Security: prevent zip slip vulnerability
                 for member in zip_ref.namelist():
                     member_path = Path(extract_to) / member
@@ -106,7 +122,7 @@ class SkillParser:
 
                 zip_ref.extractall(extract_to)
         else:
-            raise ValueError(f"Unsupported file type: {file_path.suffix}")
+            raise ValueError(f"Unsupported file type: {file_path_obj.suffix}")
 
     def _parse_skill_md(self, skill_dir: str) -> SkillPackageMetadata:
         """

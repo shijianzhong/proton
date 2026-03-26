@@ -227,6 +227,16 @@ class IntentRoutingConfig(BaseModel):
 
 # ============== Built-in Agent Definition ==============
 
+class SearchStrategyConfig(BaseModel):
+    use_browser_fallback: bool = False
+    strategy_mode: str = "bing_then_tavily"
+    deep_search_trigger: str = "auto"
+    locale: str = "zh-CN"
+    bing_count: int = 5
+    tavily_count: int = 8
+    max_total_calls: int = 12
+
+
 class BuiltinAgentDefinition(BaseModel):
     """
     Complete definition for a built-in agent that can be visually edited.
@@ -268,6 +278,8 @@ class BuiltinAgentDefinition(BaseModel):
 
     # System tools (file, shell, web operations)
     system_tools: List[str] = Field(default_factory=list)  # List of enabled system tool names
+    use_global_search_config: bool = True
+    search_strategy: Optional[SearchStrategyConfig] = None
 
     # Knowledge/Context
     knowledge_base: Optional[str] = None  # RAG source reference
