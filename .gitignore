@@ -47,3 +47,7 @@ ui/.env
 .gemini/
 output/
 data/proton.db
+
+# Runtime skill artifacts
+data/skills/*
+!data/skills/registry.json
