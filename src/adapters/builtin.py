@@ -767,9 +767,17 @@ class BuiltinAgentAdapter(AgentAdapter):
             return "No code defined"
 
         try:
-            from ..execution.backends.docker import DockerBackend
-            backend = DockerBackend()
-            result = await backend.run_python(tool_def.code, params)
+            # Try Docker backend first, fallback to local
+            try:
+                from ..execution.backends.docker import DockerBackend
+                backend = DockerBackend()
+                result = await backend.run_python(tool_def.code, params)
+            except (ImportError, Exception) as e:
+                # Fallback to local process backend
+                from ..execution.backends.local import LocalProcessBackend
+                backend = LocalProcessBackend()
+                result = await backend.run_python(tool_def.code, params, timeout=30)
+
             if result.error:
                 return f"Code execution error: {result.error}"
             return result.output

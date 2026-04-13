@@ -9,6 +9,7 @@ Handles:
 """
 
 import asyncio
+import copy
 import json
 import logging
 import os
@@ -757,7 +758,7 @@ class TreeExecutor:
             child_ctx = ExecutionContext(
                 call_chain=context.call_chain,
                 max_depth=context.max_depth,
-                shared_state=context.shared_state.copy(),
+                shared_state=copy.deepcopy(context.shared_state),
                 agent_outputs=context.agent_outputs.copy(),
                 messages=context.messages.copy(),
                 compressed_context=context.compressed_context,
@@ -1036,7 +1037,7 @@ class TreeExecutor:
                     child_ctx = ExecutionContext(
                         call_chain=context.call_chain,
                         max_depth=context.max_depth,
-                        shared_state=context.shared_state.copy(),
+                        shared_state=copy.deepcopy(context.shared_state),
                         agent_outputs=context.agent_outputs.copy(),
                         messages=context.messages.copy(),
                         compressed_context=context.compressed_context,

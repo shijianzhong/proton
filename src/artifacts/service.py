@@ -1574,7 +1574,22 @@ Requirements:
 
         # Use LLM to generate the actual skill code
         generated_code = await self._generate_skill_code_via_llm(candidate)
-        
+
+        if generated_code:
+            # Verify generated code in sandbox before saving
+            try:
+                from ..execution.backends.local import LocalProcessBackend
+                backend = LocalProcessBackend()
+                # Quick syntax check with timeout
+                test_code = f"import ast\nast.parse({repr(generated_code)})"
+                result = await backend.run_python(test_code, {}, timeout=5)
+                if result.error:
+                    logger.warning(f"Generated code syntax check failed: {result.error}, using fallback")
+                    generated_code = None
+            except Exception as e:
+                logger.warning(f"Code verification failed: {e}, using fallback")
+                generated_code = None
+
         if generated_code:
             skill_py = generated_code
         else:
