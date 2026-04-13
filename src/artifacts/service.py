@@ -1487,6 +1487,59 @@ class ArtifactFactoryService:
         await manager.save_current_state(workflow.id)
         return workflow.id
 
+    async def _generate_skill_code_via_llm(self, candidate: ArtifactCandidate) -> Optional[str]:
+        try:
+            import os
+            from openai import AsyncOpenAI
+            from ..copilot import get_copilot_service
+            
+            copilot = get_copilot_service()
+            copilot_cfg = copilot.get_config()
+            api_key = copilot_cfg.get("api_key") or os.environ.get("OPENAI_API_KEY")
+            base_url = copilot_cfg.get("base_url")
+            model = copilot_cfg.get("model", "gpt-4")
+            
+            kwargs = {}
+            if api_key:
+                kwargs["api_key"] = api_key
+            else:
+                kwargs["api_key"] = "placeholder"
+            if base_url:
+                kwargs["base_url"] = base_url
+                
+            client = AsyncOpenAI(**kwargs)
+            
+            prompt = f"""
+You are an expert Python developer. Generate a complete Python script for a skill.
+The skill is named '{candidate.draft.get("name")}' and its description is '{candidate.task_summary}'.
+The entry function must be named '{candidate.draft.get("function_name", "execute")}'.
+It must accept the parameters defined in this JSON schema:
+{json.dumps(candidate.draft.get("parameters_schema", {}), ensure_ascii=False)}
+
+Requirements:
+- The script should be self-contained.
+- Do not use markdown blocks (```python) in your output, just return the raw Python code.
+- Return a dictionary with results.
+- Implement the logic to actually perform the task described. If it requires external APIs, write robust request logic. If it is a mock, make it a high-quality mock.
+"""
+            resp = await client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=2048,
+            )
+            code = resp.choices[0].message.content.strip()
+            if code.startswith("```python"):
+                code = code[9:]
+            elif code.startswith("```"):
+                code = code[3:]
+            if code.endswith("```"):
+                code = code[:-3]
+            return code.strip()
+        except Exception as e:
+            logger.error(f"Failed to generate skill code via LLM: {e}")
+            return None
+
     async def _materialize_skill(
         self,
         candidate: ArtifactCandidate,
@@ -1519,15 +1572,22 @@ class ArtifactFactoryService:
         )
         (package_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
 
-        skill_py = (
-            "from typing import Any, Dict\n\n"
-            f"def {function_name}(input: str, **kwargs: Any) -> Dict[str, Any]:\n"
-            "    return {\n"
-            f"        \"summary\": \"{skill_desc}\",\n"
-            "        \"input\": input,\n"
-            "        \"extra\": kwargs,\n"
-            "    }\n"
-        )
+        # Use LLM to generate the actual skill code
+        generated_code = await self._generate_skill_code_via_llm(candidate)
+        
+        if generated_code:
+            skill_py = generated_code
+        else:
+            skill_py = (
+                "from typing import Any, Dict\n\n"
+                f"def {function_name}(input: str, **kwargs: Any) -> Dict[str, Any]:\n"
+                "    return {\n"
+                f"        \"summary\": \"{skill_desc}\",\n"
+                "        \"input\": input,\n"
+                "        \"extra\": kwargs,\n"
+                "    }\n"
+            )
+            
         (package_dir / "skill.py").write_text(skill_py, encoding="utf-8")
 
         archive_path = base_dir / f"{candidate.id}.skill"

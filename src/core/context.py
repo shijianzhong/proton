@@ -134,7 +134,8 @@ class ExecutionContext:
     def create_child_context(
         self,
         agent_id: str,
-        layer_timeout: Optional[float] = None
+        layer_timeout: Optional[float] = None,
+        isolate: bool = False
     ) -> "ExecutionContext":
         """
         Create a child context for a sub-agent call.
@@ -142,6 +143,7 @@ class ExecutionContext:
         Args:
             agent_id: ID of the agent being called
             layer_timeout: Optional timeout override for this layer
+            isolate: If True, deepcopy shared_state, agent_outputs, errors, warnings to prevent race conditions during parallel execution.
 
         Returns:
             New ExecutionContext for the child agent
@@ -173,27 +175,47 @@ class ExecutionContext:
                 f"Total timeout {self.total_timeout}s exceeded after {elapsed:.1f}s"
             )
 
+        import copy
+
         # Create child context
         child = ExecutionContext(
             call_chain=self.call_chain.push(agent_id),
             max_depth=self.max_depth,
-            shared_state=self.shared_state,  # Shared reference
-            agent_outputs=self.agent_outputs,  # Shared reference
-            messages=self.messages.copy(),  # Copy messages
+            shared_state=copy.deepcopy(self.shared_state) if isolate else self.shared_state,
+            agent_outputs=self.agent_outputs.copy() if isolate else self.agent_outputs,
+            messages=self.messages.copy(),
             compressed_context=self.compressed_context,
             max_context_tokens=self.max_context_tokens,
             total_timeout=self.total_timeout,
             layer_timeout=layer_timeout or self.layer_timeout,
             remaining_timeout=new_remaining,
             error_strategy=self.error_strategy,
-            errors=self.errors,  # Shared reference for error collection
-            warnings=self.warnings,  # Shared reference
+            errors=list(self.errors) if isolate else self.errors,
+            warnings=list(self.warnings) if isolate else self.warnings,
             execution_id=self.execution_id,
             parent_execution_id=self.execution_id,
-            metadata=self.metadata.copy(),
+            metadata=copy.deepcopy(self.metadata) if isolate else self.metadata,
         )
 
         return child
+
+    def merge_isolated_context(self, child_context: "ExecutionContext") -> None:
+        """Merge an isolated child context back into the parent."""
+        # Merge shared state (child overrides parent on conflict)
+        def _deep_merge(d1: dict, d2: dict) -> None:
+            for k, v in d2.items():
+                if k in d1 and isinstance(d1[k], dict) and isinstance(v, dict):
+                    _deep_merge(d1[k], v)
+                else:
+                    d1[k] = v
+        _deep_merge(self.shared_state, child_context.shared_state)
+        
+        # Merge agent outputs
+        self.agent_outputs.update(child_context.agent_outputs)
+        
+        # Append errors and warnings
+        self.errors.extend(child_context.errors)
+        self.warnings.extend(child_context.warnings)
 
     def add_message(self, message: ChatMessage) -> None:
         """Add a message to the history."""

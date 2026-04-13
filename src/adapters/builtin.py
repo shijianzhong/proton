@@ -766,44 +766,13 @@ class BuiltinAgentAdapter(AgentAdapter):
         if not tool_def.code:
             return "No code defined"
 
-        # WARNING: In production, this should use a proper sandbox!
-        # For now, we use a restricted exec
         try:
-            # Create restricted globals
-            safe_globals = {
-                "__builtins__": {
-                    "len": len,
-                    "str": str,
-                    "int": int,
-                    "float": float,
-                    "list": list,
-                    "dict": dict,
-                    "bool": bool,
-                    "range": range,
-                    "enumerate": enumerate,
-                    "zip": zip,
-                    "map": map,
-                    "filter": filter,
-                    "sorted": sorted,
-                    "sum": sum,
-                    "min": min,
-                    "max": max,
-                    "abs": abs,
-                    "round": round,
-                    "print": print,
-                },
-                "json": json,
-                "re": re,
-            }
-
-            # Add parameters
-            local_vars = {"params": params, "result": None}
-
-            # Execute code
-            exec(tool_def.code, safe_globals, local_vars)
-
-            return str(local_vars.get("result", "No result"))
-
+            from ..execution.backends.docker import DockerBackend
+            backend = DockerBackend()
+            result = await backend.run_python(tool_def.code, params)
+            if result.error:
+                return f"Code execution error: {result.error}"
+            return result.output
         except Exception as e:
             return f"Code execution error: {str(e)}"
 

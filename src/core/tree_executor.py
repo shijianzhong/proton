@@ -750,8 +750,38 @@ class TreeExecutor:
         children: List[AgentNode],
         context: ExecutionContext,
     ) -> List[AgentResponse]:
-        tasks = [self._execute_node(child, context) for child in children]
-        return await asyncio.gather(*tasks, return_exceptions=False)
+        isolated_contexts = []
+        tasks = []
+        for child in children:
+            # Create a manual isolated context for parallel execution to avoid state corruption
+            child_ctx = ExecutionContext(
+                call_chain=context.call_chain,
+                max_depth=context.max_depth,
+                shared_state=context.shared_state.copy(),
+                agent_outputs=context.agent_outputs.copy(),
+                messages=context.messages.copy(),
+                compressed_context=context.compressed_context,
+                max_context_tokens=context.max_context_tokens,
+                total_timeout=context.total_timeout,
+                layer_timeout=context.layer_timeout,
+                remaining_timeout=context.remaining_timeout,
+                error_strategy=context.error_strategy,
+                errors=list(context.errors),
+                warnings=list(context.warnings),
+                execution_id=context.execution_id,
+                parent_execution_id=context.execution_id,
+                metadata=context.metadata.copy(),
+            )
+            isolated_contexts.append(child_ctx)
+            tasks.append(self._execute_node(child, child_ctx))
+            
+        responses = await asyncio.gather(*tasks, return_exceptions=False)
+        
+        # Merge isolated contexts back into parent
+        for child_ctx in isolated_contexts:
+            context.merge_isolated_context(child_ctx)
+            
+        return responses
 
     async def _route_conditional(
         self,
@@ -999,13 +1029,37 @@ class TreeExecutor:
                 all_responses.append(resp)
                 context.add_messages(resp.messages)
             else:
-                # Same priority → parallel
-                responses = await asyncio.gather(
-                    *[self._execute_node(c, context) for c in group],
-                    return_exceptions=False,
-                )
+                # Same priority → parallel with isolated contexts
+                isolated_contexts = []
+                tasks = []
+                for child in group:
+                    child_ctx = ExecutionContext(
+                        call_chain=context.call_chain,
+                        max_depth=context.max_depth,
+                        shared_state=context.shared_state.copy(),
+                        agent_outputs=context.agent_outputs.copy(),
+                        messages=context.messages.copy(),
+                        compressed_context=context.compressed_context,
+                        max_context_tokens=context.max_context_tokens,
+                        total_timeout=context.total_timeout,
+                        layer_timeout=context.layer_timeout,
+                        remaining_timeout=context.remaining_timeout,
+                        error_strategy=context.error_strategy,
+                        errors=list(context.errors),
+                        warnings=list(context.warnings),
+                        execution_id=context.execution_id,
+                        parent_execution_id=context.execution_id,
+                        metadata=context.metadata.copy(),
+                    )
+                    isolated_contexts.append(child_ctx)
+                    tasks.append(self._execute_node(child, child_ctx))
+                
+                responses = await asyncio.gather(*tasks, return_exceptions=False)
                 all_responses.extend(responses)
-                for resp in responses:
+                
+                # Merge isolated contexts and messages back into parent
+                for child_ctx, resp in zip(isolated_contexts, responses):
+                    context.merge_isolated_context(child_ctx)
                     context.add_messages(resp.messages)
         return all_responses
 
