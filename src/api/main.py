@@ -2763,10 +2763,12 @@ def create_app() -> FastAPI:
 
     @app.get("/api/portals", summary="列出所有超级入口")
     async def list_portals():
-        """列出所有超级入口及其配置。"""
+        """列出所有超级入口及其配置。不包含默认的 Root Portal。"""
         from ..portal import get_portal_manager
         mgr = get_portal_manager()
         portals = await mgr.list_portals()
+        # 根入口(Root Portal)不展示在超级入口列表中
+        portals = [p for p in portals if not p.is_default]
         return [p.model_dump() for p in portals]
 
     @app.get("/api/portals/default", summary="获取默认 Root Portal")

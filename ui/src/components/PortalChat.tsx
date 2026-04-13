@@ -11,6 +11,7 @@ const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 interface PortalChatProps {
   portal: Portal;
   onBack: () => void;
+  hideBackButton?: boolean;
 }
 
 type MsgRole = 'user' | 'assistant' | 'event';
@@ -157,7 +158,7 @@ const EventCard: React.FC<{ msg: ChatMsg }> = ({ msg }) => {
 /*  Main Component                                                      */
 /* ------------------------------------------------------------------ */
 
-const PortalChat: React.FC<PortalChatProps> = ({ portal, onBack }) => {
+const PortalChat: React.FC<PortalChatProps> = ({ portal, onBack, hideBackButton }) => {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
@@ -262,7 +263,7 @@ const PortalChat: React.FC<PortalChatProps> = ({ portal, onBack }) => {
     <div className={styles.container}>
       {/* Top bar */}
       <div className={styles.topbar}>
-        <button className={styles.backBtn} onClick={onBack}>← 返回</button>
+        {!hideBackButton && <button className={styles.backBtn} onClick={onBack}>← 返回</button>}
         <div className={styles.topbarInfo}>
           <div className={styles.topbarTitle}>🧠 {portal.name}</div>
           <div className={styles.topbarMeta}>
