@@ -86,6 +86,13 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
   const [allSkillsLoading, setAllSkillsLoading] = useState(false);
   const [skillBindingLoadingId, setSkillBindingLoadingId] = useState<string | null>(null);
 
+  // MCP binding states
+  const [agentMCPs, setAgentMCPs] = useState<any[]>([]);
+  const [mcpsLoading, setMcpsLoading] = useState(false);
+  const [allMCPs, setAllMCPs] = useState<any[]>([]);
+  const [allMCPsLoading, setAllMCPsLoading] = useState(false);
+  const [mcpBindingLoadingId, setMcpBindingLoadingId] = useState<string | null>(null);
+
   // System tools state
   const [systemTools, setSystemTools] = useState<Record<string, SystemTool[]>>({});
   const [systemToolCategories, setSystemToolCategories] = useState<string[]>([]);
@@ -125,6 +132,32 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
     }
   };
 
+  // Load MCPs
+  const loadAgentMCPs = async () => {
+    if (!agentId) return;
+    setMcpsLoading(true);
+    try {
+      const mcps = await api.getAgentMCPs(agentId);
+      setAgentMCPs(mcps);
+    } catch (error) {
+      console.error('Failed to load agent MCPs:', error);
+    } finally {
+      setMcpsLoading(false);
+    }
+  };
+
+  const loadAllMCPs = async () => {
+    setAllMCPsLoading(true);
+    try {
+      const mcps = await api.listMCPs();
+      setAllMCPs(mcps);
+    } catch (error) {
+      console.error('Failed to load MCPs:', error);
+    } finally {
+      setAllMCPsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (visible && workflowId && agentId && agentType === 'builtin') {
       loadDefinition();
@@ -132,11 +165,15 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
       loadSystemTools();
       loadAgentSkills();
       loadAllSkills();
+      loadAgentMCPs();
+      loadAllMCPs();
     } else if (visible) {
       setFormData({});
       setPlugins([]);
       setAgentSkills([]);
       setAllSkills([]);
+      setAgentMCPs([]);
+      setAllMCPs([]);
     }
   }, [visible, workflowId, agentId, agentType]);
 
@@ -439,6 +476,40 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
       toast.error('技能绑定失败');
     } finally {
       setSkillBindingLoadingId(null);
+    }
+  };
+
+  const handleUnbindMCP = async (mcpId: string) => {
+    if (!agentId) return;
+    if (mcpBindingLoadingId) return;
+
+    setMcpBindingLoadingId(mcpId);
+    try {
+      await api.unbindMCPFromAgent(mcpId, agentId);
+      loadAgentMCPs();
+      toast.success('MCP 服务解绑成功');
+    } catch (error) {
+      console.error('Failed to unbind MCP:', error);
+      toast.error('MCP 服务解绑失败');
+    } finally {
+      setMcpBindingLoadingId(null);
+    }
+  };
+
+  const handleBindMCP = async (mcpId: string) => {
+    if (!agentId) return;
+    if (mcpBindingLoadingId) return;
+
+    setMcpBindingLoadingId(mcpId);
+    try {
+      await api.bindMCPToAgent(mcpId, agentId);
+      loadAgentMCPs();
+      toast.success('MCP 服务绑定成功');
+    } catch (error) {
+      console.error('Failed to bind MCP:', error);
+      toast.error('MCP 服务绑定失败');
+    } finally {
+      setMcpBindingLoadingId(null);
     }
   };
 
@@ -1095,27 +1166,89 @@ const AgentEditor: React.FC<AgentEditorProps> = ({ visible, workflowId, agentId,
                 <div className={styles.formSection}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     <h4 style={{ margin: 0 }}>MCP 服务器</h4>
-                    <button type="button" className={listStyles.button} onClick={() => handleAddPlugin('mcp')}>+ 添加 MCP</button>
+                    <button type="button" className={listStyles.button} onClick={() => handleAddPlugin('mcp')}>+ 手动配置</button>
                   </div>
 
-                  {plugins.filter(p => p.type === 'mcp').length === 0 ? (
-                    <p style={{ color: '#888' }}>暂无配置的 MCP 服务器</p>
-                  ) : (
-                    plugins.filter(p => p.type === 'mcp').map((plugin) => (
-                      <div key={plugin.id} className={styles.toolCard}>
-                        <div className={styles.toolHeader}>
-                          <div className={styles.toolTitle}>
-                            <span>{plugin.name}</span>
-                            <span style={{ fontSize: '0.75rem', padding: '2px 8px', background: '#2d3748', borderRadius: '4px' }}>MCP</span>
+                  {/* Global MCP Section */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h5 style={{ margin: '0 0 12px 0', fontSize: '0.9rem' }}>全局 MCP 库</h5>
+                    <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '12px' }}>
+                      MCP 服务为全局安装；在每个 Agent 中勾选启用即可使用。
+                    </p>
+
+                    {allMCPsLoading || mcpsLoading ? (
+                      <p style={{ color: '#888' }}>加载中...</p>
+                    ) : allMCPs.length === 0 ? (
+                      <p style={{ color: '#888' }}>暂无已安装的全局 MCP 服务</p>
+                    ) : (
+                      allMCPs.map((mcp) => {
+                        const isBound = agentMCPs.some((m) => m.id === mcp.id);
+                        const isBusy = mcpBindingLoadingId === mcp.id;
+                        return (
+                          <div
+                            key={mcp.id}
+                            className={styles.toolCard}
+                            style={{
+                              cursor: isBusy ? 'not-allowed' : 'pointer',
+                              opacity: isBusy ? 0.7 : 1,
+                              border: isBound ? '1px solid var(--color-cta)' : '1px solid var(--color-secondary)',
+                              background: isBound ? 'rgba(22, 163, 74, 0.06)' : undefined,
+                            }}
+                            onClick={() => {
+                              if (isBusy) return;
+                              if (isBound) handleUnbindMCP(mcp.id);
+                              else handleBindMCP(mcp.id);
+                            }}
+                          >
+                            <div className={styles.toolHeader}>
+                              <div className={styles.toolTitle}>
+                                <input
+                                  type="checkbox"
+                                  checked={isBound}
+                                  onChange={() => {}}
+                                  style={{ marginRight: '8px' }}
+                                />
+                                <span>{mcp.name}</span>
+                                <span style={{ fontSize: '0.75rem', padding: '2px 8px', background: '#8b5cf6', borderRadius: '4px' }}>
+                                  Global MCP
+                                </span>
+                              </div>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                {isBusy ? '处理中...' : (isBound ? '已启用' : '未启用')}
+                              </span>
+                            </div>
+                            <p className={styles.toolDescription}>{mcp.description || mcp.command}</p>
+                            <p style={{ fontSize: '0.75rem', color: '#666' }}>
+                              版本: {mcp.version} | 安装时间: {new Date(mcp.installed_at).toLocaleString()}
+                            </p>
                           </div>
-                          <button type="button" className={listStyles.buttonLink} style={{ color: '#f56565' }} onClick={() => handleDeletePlugin(plugin.id)}>删除</button>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Manual MCP Section */}
+                  <div>
+                    <h5 style={{ margin: '0 0 12px 0', fontSize: '0.9rem' }}>手动配置的 MCP</h5>
+                    {plugins.filter(p => p.type === 'mcp').length === 0 ? (
+                      <p style={{ color: '#888' }}>暂无手动配置的 MCP 服务器</p>
+                    ) : (
+                      plugins.filter(p => p.type === 'mcp').map((plugin) => (
+                        <div key={plugin.id} className={styles.toolCard}>
+                          <div className={styles.toolHeader}>
+                            <div className={styles.toolTitle}>
+                              <span>{plugin.name}</span>
+                              <span style={{ fontSize: '0.75rem', padding: '2px 8px', background: '#2d3748', borderRadius: '4px' }}>MCP</span>
+                            </div>
+                            <button type="button" className={listStyles.buttonLink} style={{ color: '#f56565' }} onClick={() => handleDeletePlugin(plugin.id)}>删除</button>
+                          </div>
+                          {plugin.tools && plugin.tools.length > 0 && (
+                            <p className={styles.toolDescription}>工具: {plugin.tools.join(', ')}</p>
+                          )}
                         </div>
-                        {plugin.tools && plugin.tools.length > 0 && (
-                          <p className={styles.toolDescription}>工具: {plugin.tools.join(', ')}</p>
-                        )}
-                      </div>
-                    ))
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
 
                 <hr className={styles.divider} />

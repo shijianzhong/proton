@@ -35,8 +35,44 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
   flex-shrink: 0;
+}
+
+.tabsContainer {
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  flex-shrink: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 32px;
+}
+
+.tab {
+  padding: 0 0 12px 0;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary, #6b7280);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+  margin-bottom: -1px;
+}
+
+.tab:hover {
+  color: var(--text-color, #1f2937);
+}
+
+.tab.activeTab {
+  color: var(--primary-color, #3b82f6);
+  border-bottom-color: var(--primary-color, #3b82f6);
 }
 
 .title {
@@ -488,4 +524,88 @@
   border-top: 1px solid var(--border-color, #e5e7eb);
   display: flex;
   justify-content: flex-end;
+  gap: 12px;
+}
+
+/* Form Styles */
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.formLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-color, #1f2937);
+}
+
+.required {
+  color: #ef4444;
+}
+
+.formInput,
+.formTextarea {
+  padding: 10px 12px;
+  background: var(--background-color, #f9fafb);
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 6px;
+  color: var(--text-color, #1f2937);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+  font-family: inherit;
+}
+
+.formInput:focus,
+.formTextarea:focus {
+  border-color: var(--primary-color, #3b82f6);
+  background: var(--surface-color, #ffffff);
+}
+
+.formTextarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.formHint {
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+}
+
+.cancelBtn {
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 6px;
+  color: var(--text-color, #4b5563);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cancelBtn:hover {
+  background: var(--surface-hover, #f3f4f6);
+}
+
+.submitBtn {
+  padding: 8px 16px;
+  background: var(--primary-color, #3b82f6);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.submitBtn:hover {
+  background: var(--primary-hover, #2563eb);
+}
+
+.submitBtn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }

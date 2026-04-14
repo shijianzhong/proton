@@ -258,17 +258,25 @@ class PluginRegistry:
         """
         Initialize all plugins for an agent node.
 
-        This reads the node's plugin configurations and registers them.
+        This reads the node's globally bound plugins (Skills and MCPs) from their respective managers.
         """
-        # Register MCP servers
-        for mcp_config in node.config.mcp_servers:
-            await self.register_mcp(mcp_config, node.id)
+        # 1. Register global MCP servers bound to this agent
+        from .mcp_manager import get_mcp_manager
+        mcp_manager = get_mcp_manager()
+        bound_mcps = mcp_manager.get_servers_for_agent(node.id)
+        for mcp in bound_mcps:
+            await self.register_mcp(mcp.config, node.id)
 
-        # Register skills
-        for skill_config in node.config.skills:
-            await self.register_skill(skill_config, node.id)
+        # 2. Register global Skills bound to this agent
+        from .skill_manager import get_skill_manager
+        skill_manager = get_skill_manager()
+        bound_skills = skill_manager.get_skills_for_agent(node.id)
+        for skill in bound_skills:
+            skill_config = skill_manager.get_skill_config(skill.id)
+            if skill_config:
+                await self.register_skill(skill_config, node.id)
 
-        # Register RAG sources
+        # 3. Register RAG sources (these are still local to the agent config for now)
         for rag_config in node.config.rag_sources:
             await self.register_rag(rag_config, node.id)
 

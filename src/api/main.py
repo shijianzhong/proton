@@ -129,6 +129,7 @@ class RegisterMCPRequest(BaseModel):
     args: List[str] = Field(default_factory=list)
     env: Dict[str, str] = Field(default_factory=dict)
     agent_id: Optional[str] = None
+    is_global: bool = False
 
 
 class RegisterSkillRequest(BaseModel):
@@ -668,6 +669,23 @@ def create_app() -> FastAPI:
         if not removed:
             raise HTTPException(status_code=404, detail="Agent not found")
 
+        # Clean up agent bindings in global managers to prevent memory leaks and orphaned data
+        try:
+            # Unbind Skills
+            from ..plugins.skill_manager import get_skill_manager
+            skill_manager = get_skill_manager()
+            for skill in skill_manager.get_skills_for_agent(agent_id):
+                await skill_manager.unbind_skill_from_agent(skill.id, agent_id)
+                
+            # Unbind MCP Servers
+            from ..plugins.mcp_manager import get_mcp_manager
+            mcp_manager = get_mcp_manager()
+            for mcp in mcp_manager.get_servers_for_agent(agent_id):
+                mcp_manager.unbind_server_from_agent(mcp.id, agent_id)
+        except Exception as e:
+            # We don't want to fail the agent deletion if binding cleanup fails
+            print(f"Warning: Failed to clean up bindings for deleted agent {agent_id}: {e}")
+
         # Persist changes
         await manager.save_current_state(workflow_id)
 
@@ -941,8 +959,6 @@ def create_app() -> FastAPI:
     @app.post("/api/plugins/mcp")
     async def register_mcp(request: RegisterMCPRequest):
         """Register an MCP server."""
-        registry = get_plugin_registry()
-
         config = MCPServerConfig(
             name=request.name,
             command=request.command,
@@ -950,13 +966,34 @@ def create_app() -> FastAPI:
             env=request.env,
         )
 
-        plugin = await registry.register_mcp(config, request.agent_id)
-
-        return {
-            "status": "registered",
-            "name": request.name,
-            "tools": [t.name for t in plugin.get_tools()],
-        }
+        if request.is_global:
+            from ..plugins.mcp_manager import get_mcp_manager
+            manager = get_mcp_manager()
+            server = manager.register_server(
+                config=config,
+                description=f"Globally installed MCP Server: {request.name}"
+            )
+            
+            # If agent_id provided, bind it immediately
+            if request.agent_id:
+                manager.bind_server_to_agent(server.id, request.agent_id)
+                # Also register dynamically in registry so it's immediately available to the agent
+                registry = get_plugin_registry()
+                await registry.register_mcp(config, request.agent_id)
+                
+            return {
+                "status": "registered_globally",
+                "server_id": server.id,
+                "name": request.name,
+            }
+        else:
+            registry = get_plugin_registry()
+            plugin = await registry.register_mcp(config, request.agent_id)
+            return {
+                "status": "registered",
+                "name": request.name,
+                "tools": [t.name for t in plugin.get_tools()],
+            }
 
     @app.post("/api/plugins/skill")
     async def register_skill(request: RegisterSkillRequest):
@@ -1024,6 +1061,58 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Plugin not found")
 
         return {"status": "removed", "id": plugin_id}
+
+    @app.get("/api/mcp")
+    async def list_mcps():
+        """List all globally installed MCP servers."""
+        from ..plugins.mcp_manager import get_mcp_manager
+        manager = get_mcp_manager()
+        servers = manager.list_servers()
+        
+        return [
+            {
+                "id": server.id,
+                "name": server.config.name,
+                "description": server.description,
+                "version": server.version,
+                "author": server.author,
+                "tags": server.tags,
+                "enabled": server.enabled,
+                "installed_at": server.installed_at.isoformat(),
+                "agent_count": len(server.agent_ids),
+                "command": server.config.command,
+                "args": server.config.args,
+                "env": server.config.env,
+            }
+            for server in servers
+        ]
+
+    @app.delete("/api/mcp/{server_id}")
+    async def unregister_mcp(server_id: str):
+        """Unregister a globally installed MCP server."""
+        from ..plugins.mcp_manager import get_mcp_manager
+        success = get_mcp_manager().unregister_server(server_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="MCP server not found")
+        return {"status": "success"}
+
+    @app.post("/api/mcp/{server_id}/bind/{agent_id}")
+    async def bind_mcp_to_agent(server_id: str, agent_id: str):
+        """Bind a global MCP server to an agent."""
+        from ..plugins.mcp_manager import get_mcp_manager
+        success = get_mcp_manager().bind_server_to_agent(server_id, agent_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="MCP server not found")
+        return {"status": "success"}
+
+    @app.post("/api/mcp/{server_id}/unbind/{agent_id}")
+    async def unbind_mcp_from_agent(server_id: str, agent_id: str):
+        """Unbind a global MCP server from an agent."""
+        from ..plugins.mcp_manager import get_mcp_manager
+        success = get_mcp_manager().unbind_server_from_agent(server_id, agent_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="MCP server not found")
+        return {"status": "success"}
 
     # ============== Skill Management Endpoints ==============
 
@@ -1111,6 +1200,31 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Skill not found")
 
         return {"status": "unbound", "skill_id": skill_id, "agent_id": agent_id}
+
+    @app.get("/api/agents/{agent_id}/mcp")
+    async def get_agent_mcps(agent_id: str):
+        """Get all MCP servers bound to an agent."""
+        from ..plugins.mcp_manager import get_mcp_manager
+        manager = get_mcp_manager()
+        servers = manager.get_servers_for_agent(agent_id)
+        
+        return [
+            {
+                "id": server.id,
+                "name": server.config.name,
+                "description": server.description,
+                "version": server.version,
+                "author": server.author,
+                "tags": server.tags,
+                "enabled": server.enabled,
+                "installed_at": server.installed_at.isoformat(),
+                "agent_count": len(server.agent_ids),
+                "command": server.config.command,
+                "args": server.config.args,
+                "env": server.config.env,
+            }
+            for server in servers
+        ]
 
     @app.get("/api/agents/{agent_id}/skills")
     async def get_agent_skills(agent_id: str):

@@ -59,6 +59,19 @@ class MCPServerConfig(BaseModel):
     transport: str = "stdio"                # stdio, http, websocket
     url: Optional[str] = None               # For http/websocket transport
 
+class InstalledMCPServer(BaseModel):
+    """Represents a globally installed MCP server."""
+    id: str                                 # Unique MCP server ID
+    config: MCPServerConfig
+    description: str = ""
+    author: Optional[str] = None
+    version: str = "1.0.0"
+    tags: List[str] = Field(default_factory=list)
+    installed_at: datetime = Field(default_factory=datetime.now)
+    enabled: bool = True
+    # Runtime info
+    agent_ids: List[str] = Field(default_factory=list)  # Agents using this MCP server
+
 
 class SkillConfig(BaseModel):
     """Configuration for a skill."""
@@ -440,8 +453,6 @@ class AgentConfig(BaseModel):
     intent_routing_config: Optional[IntentRoutingConfig] = None
 
     # Plugins
-    mcp_servers: List[MCPServerConfig] = Field(default_factory=list)
-    skills: List[SkillConfig] = Field(default_factory=list)
     rag_sources: List[RAGSourceConfig] = Field(default_factory=list)
 
 

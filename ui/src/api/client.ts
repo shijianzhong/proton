@@ -561,8 +561,33 @@ export const api = {
     return response.data;
   },
 
-  async registerMCP(data: { name: string; command: string; args?: string[]; agent_id?: string }): Promise<any> {
+  async registerMCP(data: { name: string; command: string; args?: string[]; env?: Record<string, string>; agent_id?: string; is_global?: boolean }): Promise<any> {
     const response = await client.post('/api/plugins/mcp', data);
+    return response.data;
+  },
+
+  async listMCPs(): Promise<any[]> {
+    const response = await client.get('/api/mcp');
+    return response.data;
+  },
+
+  async deleteMCP(serverId: string): Promise<any> {
+    const response = await client.delete(`/api/mcp/${serverId}`);
+    return response.data;
+  },
+
+  async bindMCPToAgent(serverId: string, agentId: string): Promise<any> {
+    const response = await client.post(`/api/mcp/${serverId}/bind/${agentId}`);
+    return response.data;
+  },
+
+  async unbindMCPFromAgent(serverId: string, agentId: string): Promise<any> {
+    const response = await client.post(`/api/mcp/${serverId}/unbind/${agentId}`);
+    return response.data;
+  },
+
+  async getAgentMCPs(agentId: string): Promise<any[]> {
+    const response = await client.get(`/api/agents/${agentId}/mcp`);
     return response.data;
   },
 
