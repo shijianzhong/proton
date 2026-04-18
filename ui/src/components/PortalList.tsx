@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { api } from '../api/client';
+import { api, type ArtifactTransferRecommendation } from '../api/client';
 import styles from './PortalList.module.css';
 import { useToast } from './ToastProvider';
 
@@ -583,6 +583,185 @@ const KeyModal: React.FC<{ portal: Portal; onClose: () => void }> = ({ portal, o
   );
 };
 
+const TransferRecommendationModal: React.FC<{
+  portal: Portal;
+  loading: boolean;
+  items: ArtifactTransferRecommendation[];
+  onClose: () => void;
+}> = ({ portal, loading, items, onClose }) => {
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [targetAgentId, setTargetAgentId] = useState('');
+  const [showDraft, setShowDraft] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+
+  const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedItems = useMemo(
+    () => items.filter((it) => selected.has(it.candidate_id)),
+    [items, selected]
+  );
+  const draftActions = useMemo(
+    () =>
+      selectedItems.map((it) => ({
+        action: 'bind_skill_to_agent',
+        candidate_id: it.candidate_id,
+        materialized_skill_id: it.materialized_skill_id || null,
+        required_input: {
+          target_agent_id: targetAgentId || '<待填写>',
+        },
+        endpoint: it.materialized_skill_id
+          ? `/api/skills/${it.materialized_skill_id}/bind/{agent_id}`
+          : '/api/artifacts/candidates/{candidate_id}/approve -> /api/skills/{skill_id}/bind/{agent_id}',
+        note: it.materialized_skill_id
+          ? '已有 materialized skill，可直接绑定'
+          : '候选尚未物化，需先审批物化再绑定',
+      })),
+    [selectedItems, targetAgentId]
+  );
+  const draftPayload = useMemo(
+    () => ({ target_portal_id: portal.id, actions: draftActions }),
+    [portal.id, draftActions]
+  );
+  const draftText = useMemo(() => JSON.stringify(draftPayload, null, 2), [draftPayload]);
+
+  const toggle = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const copyDraft = async () => {
+    if (selectedItems.length === 0) return;
+    setCopyStatus('idle');
+    setShowDraft(true);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(draftText);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = draftText;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopyStatus('copied');
+      window.setTimeout(() => setCopyStatus('idle'), 1400);
+    } catch (e) {
+      console.error(e);
+      setCopyStatus('failed');
+      window.setTimeout(() => setCopyStatus('idle'), 1800);
+    }
+  };
+
+  return (
+    <div className={styles.overlay} onClick={onClose}>
+      <div className={styles.modal} style={{ maxWidth: 760 }} onClick={e => e.stopPropagation()}>
+        <div className={styles.modalTitle}>🔄 跨 Portal 技能迁移建议</div>
+        <div className={styles.modalSubtitle}>
+          目标入口：{portal.name}（仅推荐，不自动安装）
+        </div>
+
+        {loading ? (
+          <div className={styles.empty} style={{ minHeight: 180 }}>
+            <div className={styles.spinner} style={{ width: 26, height: 26, borderWidth: 3 }} />
+          </div>
+        ) : items.length === 0 ? (
+          <div className={styles.empty} style={{ minHeight: 180 }}>
+            <div className={styles.emptyIcon}>🧩</div>
+            <h3>暂无可迁移技能</h3>
+            <p>当前没有满足阈值的候选技能，可稍后重试。</p>
+          </div>
+        ) : (
+          <div className={styles.wfList}>
+            {items.map((item) => (
+              <div key={item.candidate_id} className={styles.wfItem} onClick={() => toggle(item.candidate_id)}>
+                <input
+                  type="checkbox"
+                  className={styles.wfCheckbox}
+                  checked={selected.has(item.candidate_id)}
+                  onChange={() => {}}
+                />
+                <div className={styles.wfItemInfo}>
+                  <div className={styles.wfItemName}>
+                    {item.task_summary || '未命名技能'}
+                  </div>
+                  <div className={styles.wfItemDesc}>
+                    候选ID: {item.candidate_id}
+                    {item.source_portal_id ? ` · 来源 Portal: ${item.source_portal_id}` : ''}
+                  </div>
+                  <div className={styles.wfItemDesc}>
+                    状态: {item.status}/{item.rollout_status} · 建议: {item.recommendation}
+                  </div>
+                </div>
+                <div className={styles.wfItemMeta}>
+                  分数 {(item.score * 100).toFixed(1)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && items.length > 0 && (
+          <>
+            <div className={styles.sectionDivider}>生成绑定草案（只读，不执行）</div>
+            <div className={styles.formGroup}>
+              <label className={styles.label}>目标 Agent ID（可选）</label>
+              <input
+                className={styles.input}
+                placeholder="例如：agent_xxx（留空会生成待填写占位）"
+                value={targetAgentId}
+                onChange={(e) => setTargetAgentId(e.target.value)}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <button
+                className={`${styles.btn} ${styles.btnSecondary}`}
+                disabled={selectedItems.length === 0}
+                onClick={() => setShowDraft(true)}
+              >
+                生成草案（{selectedItems.length}）
+              </button>
+              <button
+                className={`${styles.btn} ${styles.btnSecondary}`}
+                disabled={selectedItems.length === 0}
+                onClick={copyDraft}
+              >
+                {copyStatus === 'copied' ? '已复制' : copyStatus === 'failed' ? '复制失败' : '一键复制'}
+              </button>
+              <button
+                className={`${styles.btn} ${styles.btnGhost}`}
+                onClick={() => {
+                  setShowDraft(false);
+                  setSelectedIds([]);
+                  setCopyStatus('idle');
+                }}
+              >
+                清空选择
+              </button>
+            </div>
+            {showDraft && (
+              <div className={styles.formGroup} style={{ background: 'rgba(15,23,42,0.5)', borderRadius: 8, padding: '10px 12px' }}>
+                <div style={{ fontSize: '0.78rem', marginBottom: 8, opacity: 0.85 }}>
+                  待确认操作（复制给运维/管理员执行）
+                </div>
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '0.72rem', lineHeight: 1.5 }}>
+{draftText}
+                </pre>
+              </div>
+            )}
+          </>
+        )}
+
+        <div className={styles.modalFooter}>
+          <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={onClose}>关闭</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ------------------------------------------------------------------ */
 /*  Main PortalList Component                                           */
 /* ------------------------------------------------------------------ */
@@ -596,6 +775,9 @@ const PortalList: React.FC<PortalListProps> = ({ onOpenChat }) => {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Portal | null>(null);
   const [keyTarget, setKeyTarget] = useState<Portal | null>(null);
+  const [transferTarget, setTransferTarget] = useState<Portal | null>(null);
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [transferItems, setTransferItems] = useState<ArtifactTransferRecommendation[]>([]);
 
   useEffect(() => {
     loadAll();
@@ -656,6 +838,26 @@ const PortalList: React.FC<PortalListProps> = ({ onOpenChat }) => {
       }
     }
     await loadAll();
+  };
+
+  const handleOpenTransferRecommendations = async (portal: Portal) => {
+    setTransferTarget(portal);
+    setTransferItems([]);
+    setTransferLoading(true);
+    try {
+      const payload = await api.getArtifactTransferRecommendations({
+        target_portal_id: portal.id,
+        top_k: 10,
+        min_score: 0.15,
+        include_pending: true,
+      });
+      setTransferItems(payload.items || []);
+    } catch (e) {
+      console.error(e);
+      setTransferItems([]);
+    } finally {
+      setTransferLoading(false);
+    }
   };
 
   return (
@@ -755,6 +957,13 @@ const PortalList: React.FC<PortalListProps> = ({ onOpenChat }) => {
                   </button>
                   <button
                     className={`${styles.btn} ${styles.btnGhost}`}
+                    title="迁移建议"
+                    onClick={() => handleOpenTransferRecommendations(portal)}
+                  >
+                    🔄
+                  </button>
+                  <button
+                    className={`${styles.btn} ${styles.btnGhost}`}
                     title="查看访问密钥"
                     onClick={() => setKeyTarget(portal)}
                   >
@@ -799,6 +1008,18 @@ const PortalList: React.FC<PortalListProps> = ({ onOpenChat }) => {
       {/* Key modal */}
       {keyTarget && (
         <KeyModal portal={keyTarget} onClose={() => setKeyTarget(null)} />
+      )}
+
+      {transferTarget && (
+        <TransferRecommendationModal
+          portal={transferTarget}
+          loading={transferLoading}
+          items={transferItems}
+          onClose={() => {
+            setTransferTarget(null);
+            setTransferItems([]);
+          }}
+        />
       )}
     </div>
   );

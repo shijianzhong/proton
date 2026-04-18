@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+from .assessor import AssessmentResult, ValueAssessor
 from ..core.agent_node import AgentNode
 from ..core.models import (
     AgentConfig,
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 class ArtifactFactoryService:
     def __init__(self):
         self._storage: Optional[StorageManager] = None
+        self._assessor = ValueAssessor()
 
     async def _ensure_storage(self):
         if self._storage is None:
@@ -57,6 +59,20 @@ class ArtifactFactoryService:
         if storage is None:
             raise RuntimeError("storage unavailable")
 
+        signals = {
+            "repeat_count": repeat_count,
+            "tool_call_count": tool_call_count,
+            "unique_tool_count": unique_tool_count,
+            "parallel_branches": parallel_branches,
+            "requires_long_running": requires_long_running,
+            "has_manual_steps": has_manual_steps,
+            "failure_rate": failure_rate,
+            "high_risk": high_risk,
+            "avg_duration_sec": float((metadata or {}).get("avg_duration_sec") or 0.0),
+            "user_explicit_save": bool((metadata or {}).get("user_explicit_save")),
+            "strong_signal": bool((metadata or {}).get("strong_signal")),
+            "precipitation_level": str((metadata or {}).get("precipitation_level") or ""),
+        }
         decision = self._decide_type(
             repeat_count=repeat_count,
             tool_call_count=tool_call_count,
@@ -70,11 +86,17 @@ class ArtifactFactoryService:
         artifact_type = decision["artifact_type"]
         confidence = float(decision["confidence"])
         reasons = list(decision["reasons"])
+        assessment = self._assessor.assess(task_summary=task_summary, signals=signals)
+        if assessment.reasons:
+            reasons.extend([f"assessor:{item}" for item in assessment.reasons[:4]])
         draft = self._build_draft(
             artifact_type=artifact_type,
             task_summary=task_summary,
         )
+        if artifact_type == ArtifactType.SKILL and assessment.suggested_skill_name:
+            draft["name"] = assessment.suggested_skill_name
         merged_metadata = dict(metadata or {})
+        merged_metadata["value_assessment"] = assessment.to_dict()
         lineage_id = ""
         root_candidate_id = ""
         version = 1
@@ -95,16 +117,7 @@ class ArtifactFactoryService:
             metadata=merged_metadata,
             source=str(merged_metadata.get("signal_source") or "manual"),
             task_summary=task_summary,
-            signals={
-                "repeat_count": repeat_count,
-                "tool_call_count": tool_call_count,
-                "unique_tool_count": unique_tool_count,
-                "parallel_branches": parallel_branches,
-                "requires_long_running": requires_long_running,
-                "has_manual_steps": has_manual_steps,
-                "failure_rate": failure_rate,
-                "high_risk": high_risk,
-            },
+            signals=signals,
             decision=decision,
         )
         candidate = ArtifactCandidate(
@@ -136,6 +149,154 @@ class ArtifactFactoryService:
         )
         await storage.save_artifact_candidate(candidate.model_dump())
         return candidate
+
+    async def auto_create_controlled_candidates(
+        self,
+        *,
+        candidate_ids: List[str],
+        operator: str = "auto_system",
+        dry_run: bool = False,
+        limit: int = 5,
+    ) -> Dict[str, Any]:
+        await self._ensure_storage()
+        storage = self._storage
+        if storage is None:
+            raise RuntimeError("storage unavailable")
+
+        reviewed = 0
+        auto_created = 0
+        rows: List[Dict[str, Any]] = []
+        for candidate_id in candidate_ids[: max(0, int(limit))]:
+            candidate = await self.get_candidate(candidate_id)
+            if not candidate:
+                continue
+            reviewed += 1
+            if candidate.status != ArtifactCandidateStatus.PENDING:
+                rows.append(
+                    {
+                        "candidate_id": candidate.id,
+                        "eligible": False,
+                        "reason": f"status={candidate.status.value}",
+                    }
+                )
+                continue
+            if candidate.artifact_type != ArtifactType.SKILL:
+                rows.append(
+                    {
+                        "candidate_id": candidate.id,
+                        "eligible": False,
+                        "reason": f"artifact_type={candidate.artifact_type.value}",
+                    }
+                )
+                continue
+
+            assessment = self._build_candidate_assessment(candidate)
+            candidate.metadata["value_assessment"] = assessment.to_dict()
+            if not assessment.should_auto_create:
+                candidate.updated_at = datetime.now()
+                await storage.save_artifact_candidate(candidate.model_dump())
+                rows.append(
+                    {
+                        "candidate_id": candidate.id,
+                        "eligible": False,
+                        "reason": "assessment_not_passed",
+                        "assessment": assessment.to_dict(),
+                    }
+                )
+                continue
+
+            if dry_run:
+                rows.append(
+                    {
+                        "candidate_id": candidate.id,
+                        "eligible": True,
+                        "would_auto_create": True,
+                        "assessment": assessment.to_dict(),
+                    }
+                )
+                continue
+
+            materialized = await self.approve_and_materialize(
+                candidate.id,
+                approver=operator,
+            )
+            if materialized.status == ArtifactCandidateStatus.MATERIALIZED:
+                auto_meta = {
+                    "operator": operator,
+                    "created_at": datetime.now().isoformat(),
+                    "assessment": assessment.to_dict(),
+                }
+                materialized.metadata["creation_mode"] = "auto_controlled"
+                materialized.metadata["rollout_guard"] = "grayscale_only"
+                materialized.metadata["auto_create"] = auto_meta
+                await storage.save_artifact_candidate(materialized.model_dump())
+                materialized = await self.transition_rollout_status(
+                    candidate_id=materialized.id,
+                    target_status=ArtifactRolloutStatus.GRAYSCALE,
+                    operator=operator,
+                    reason="auto_controlled_create",
+                    metadata={
+                        "creation_mode": "auto_controlled",
+                        "assessment_score": assessment.score,
+                    },
+                )
+                materialized.metadata["creation_mode"] = "auto_controlled"
+                materialized.metadata["rollout_guard"] = "grayscale_only"
+                materialized.metadata["auto_create"] = auto_meta
+                materialized.updated_at = datetime.now()
+                await storage.save_artifact_candidate(materialized.model_dump())
+                auto_created += 1
+            rows.append(
+                {
+                    "candidate_id": candidate.id,
+                    "eligible": True,
+                    "auto_created": True,
+                    "rollout_status": ArtifactRolloutStatus.GRAYSCALE.value,
+                    "assessment": assessment.to_dict(),
+                }
+            )
+
+        return {
+            "reviewed_count": reviewed,
+            "auto_created_count": auto_created,
+            "items": rows,
+        }
+
+    async def create_error_driven_revision_candidate(
+        self,
+        *,
+        tool_name: str,
+        error_type: str,
+        error_message: str,
+        user_id: str = "default",
+        source_session_id: Optional[str] = None,
+        parent_candidate_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> ArtifactCandidate:
+        merged_metadata = dict(metadata or {})
+        merged_metadata["signal_source"] = "tool_error_auto_revision"
+        merged_metadata["error_revision_trigger"] = {
+            "tool_name": tool_name,
+            "error_type": error_type,
+            "error_message": (error_message or "")[:500],
+            "triggered_at": datetime.now().isoformat(),
+        }
+        summary = f"修复技能 {tool_name} 的 {error_type} 问题"
+        return await self.decide_and_create_candidate(
+            user_id=user_id,
+            source_session_id=source_session_id,
+            parent_candidate_id=parent_candidate_id,
+            task_summary=summary,
+            repeat_count=2,
+            tool_call_count=2,
+            unique_tool_count=1,
+            parallel_branches=0,
+            requires_long_running=False,
+            has_manual_steps=False,
+            failure_rate=0.2,
+            high_risk=False,
+            metadata=merged_metadata,
+        )
 
     async def decide_from_execution_trajectory(
         self,
@@ -352,6 +513,79 @@ class ArtifactFactoryService:
         else:
             response["applied"] = False
         return response
+
+    async def auto_manage_rollouts(
+        self,
+        *,
+        user_id: Optional[str] = None,
+        candidate_ids: Optional[List[str]] = None,
+        only_rollout_status: ArtifactRolloutStatus = ArtifactRolloutStatus.GRAYSCALE,
+        min_sample_size: int = 20,
+        upgrade_success_rate: float = 0.97,
+        rollback_error_rate: float = 0.08,
+        max_latency_p95_ms: float = 2500.0,
+        min_success_rate_for_rollback: float = 0.85,
+        auto_apply: bool = True,
+        dry_run: bool = False,
+        operator: str = "rollout-bot",
+        limit: int = 50,
+    ) -> Dict[str, Any]:
+        candidate_set = {str(item).strip() for item in (candidate_ids or []) if str(item).strip()}
+        all_candidates = await self.list_candidates(user_id=user_id)
+        selected: List[ArtifactCandidate] = []
+        for item in all_candidates:
+            if item.status != ArtifactCandidateStatus.MATERIALIZED:
+                continue
+            if item.rollout_status != only_rollout_status:
+                continue
+            if candidate_set and item.id not in candidate_set:
+                continue
+            selected.append(item)
+        selected = selected[: max(1, min(limit, 500))]
+
+        items: List[Dict[str, Any]] = []
+        applied_count = 0
+        decision_counter: Counter[str] = Counter()
+        for candidate in selected:
+            decision = await self.decide_rollout_action(
+                candidate_id=candidate.id,
+                min_sample_size=min_sample_size,
+                upgrade_success_rate=upgrade_success_rate,
+                rollback_error_rate=rollback_error_rate,
+                max_latency_p95_ms=max_latency_p95_ms,
+                min_success_rate_for_rollback=min_success_rate_for_rollback,
+                auto_apply=(auto_apply and not dry_run),
+                operator=operator,
+            )
+            decision_counter[str(decision.get("decision") or "unknown")] += 1
+            if bool(decision.get("applied")):
+                applied_count += 1
+            items.append(decision)
+
+        return {
+            "scope": {
+                "user_id": user_id,
+                "candidate_ids": sorted(candidate_set) if candidate_set else [],
+                "only_rollout_status": only_rollout_status.value,
+            },
+            "input": {
+                "min_sample_size": min_sample_size,
+                "upgrade_success_rate": upgrade_success_rate,
+                "rollback_error_rate": rollback_error_rate,
+                "max_latency_p95_ms": max_latency_p95_ms,
+                "min_success_rate_for_rollback": min_success_rate_for_rollback,
+                "auto_apply": auto_apply,
+                "dry_run": dry_run,
+                "operator": operator,
+                "limit": limit,
+            },
+            "summary": {
+                "selected_count": len(selected),
+                "applied_count": applied_count,
+                "decisions": dict(decision_counter),
+            },
+            "items": items,
+        }
 
     async def transition_rollout_status(
         self,
@@ -985,6 +1219,8 @@ class ArtifactFactoryService:
         trigger_revision: bool = True,
         min_revision_samples: int = 12,
         revision_cooldown_hours: int = 24,
+        trigger_auto_create: bool = False,
+        auto_create_limit: int = 5,
     ) -> Dict[str, Any]:
         """
         Run a full periodic learning cycle:
@@ -1011,17 +1247,315 @@ class ArtifactFactoryService:
                 cooldown_hours=revision_cooldown_hours,
                 dry_run=dry_run,
             )
+        auto_creation = {
+            "reviewed_count": 0,
+            "auto_created_count": 0,
+            "items": [],
+        }
+        if trigger_auto_create:
+            created_ids = [
+                str(item.get("id"))
+                for item in discovery.get("created_candidates", [])
+                if isinstance(item, dict) and item.get("id")
+            ]
+            auto_creation = await self.auto_create_controlled_candidates(
+                candidate_ids=created_ids,
+                operator="auto_system",
+                dry_run=dry_run,
+                limit=auto_create_limit,
+            )
         return {
             "generated_at": datetime.now().isoformat(),
             "scope": {"user_id": user_id},
             "dry_run": dry_run,
             "trajectory_clustering": discovery,
             "auto_revision": revision,
+            "auto_controlled_creation": auto_creation,
             "summary": {
                 "discovered_candidates": discovery.get("created_count", 0),
                 "triggered_revisions": revision.get("created_count", 0),
+                "auto_created_skills": auto_creation.get("auto_created_count", 0),
             },
         }
+
+    async def export_trajectories_as_sharegpt(
+        self,
+        *,
+        trajectories: List[Dict[str, Any]],
+        user_id: Optional[str] = None,
+        portal_id: Optional[str] = None,
+        workflow_id: Optional[str] = None,
+        from_time: Optional[str] = None,
+        to_time: Optional[str] = None,
+        min_quality_score: float = 0.0,
+        limit: int = 500,
+    ) -> Dict[str, Any]:
+        from_dt = self._parse_iso_dt(from_time)
+        to_dt = self._parse_iso_dt(to_time)
+        if from_dt and to_dt and from_dt > to_dt:
+            raise ValueError("from_time must be <= to_time")
+
+        normalized_limit = max(1, min(limit, 5000))
+        items: List[Dict[str, Any]] = []
+        skipped_quality = 0
+        scanned = 0
+
+        for tr in trajectories:
+            scanned += 1
+            sid = str(tr.get("session_id") or "").strip()
+            if not sid:
+                continue
+            tr_user_id = str(tr.get("user_id") or "").strip()
+            if user_id and tr_user_id != user_id:
+                continue
+
+            metadata = tr.get("metadata") if isinstance(tr.get("metadata"), dict) else {}
+            tr_portal_id = str((metadata or {}).get("portal_id") or "").strip()
+            if portal_id and tr_portal_id != portal_id:
+                continue
+
+            tr_workflow_id = str(tr.get("workflow_id") or "").strip()
+            if not tr_workflow_id:
+                tr_workflow_id = str((metadata or {}).get("workflow_id") or "").strip()
+            if workflow_id and tr_workflow_id != workflow_id:
+                continue
+
+            updated_at = self._parse_iso_dt(str(tr.get("updated_at") or ""))
+            if from_dt and (not updated_at or updated_at < from_dt):
+                continue
+            if to_dt and (not updated_at or updated_at > to_dt):
+                continue
+
+            raw_messages = tr.get("messages")
+            messages_for_export = raw_messages if isinstance(raw_messages, list) else []
+            conversations = self._to_sharegpt_conversations(messages=messages_for_export)
+            if len(conversations) < 2:
+                continue
+            quality = self._compute_sharegpt_quality(conversations)
+            if quality < min_quality_score:
+                skipped_quality += 1
+                continue
+            items.append(
+                {
+                    "id": sid,
+                    "conversations": conversations,
+                    "quality_score": round(quality, 6),
+                    "meta": {
+                        "session_id": sid,
+                        "user_id": tr_user_id or "default",
+                        "portal_id": tr_portal_id or None,
+                        "workflow_id": tr_workflow_id or None,
+                        "updated_at": str(tr.get("updated_at") or ""),
+                    },
+                }
+            )
+            if len(items) >= normalized_limit:
+                break
+
+        return {
+            "generated_at": datetime.now().isoformat(),
+            "format": "sharegpt",
+            "count": len(items),
+            "items": items,
+            "filters": {
+                "user_id": user_id,
+                "portal_id": portal_id,
+                "workflow_id": workflow_id,
+                "from_time": from_time,
+                "to_time": to_time,
+                "min_quality_score": min_quality_score,
+                "limit": normalized_limit,
+            },
+            "stats": {
+                "scanned_sessions": scanned,
+                "skipped_by_quality": skipped_quality,
+            },
+        }
+
+    async def recommend_skill_transfers(
+        self,
+        *,
+        target_portal_id: str,
+        user_id: Optional[str] = None,
+        top_k: int = 10,
+        min_score: float = 0.15,
+        include_pending: bool = True,
+    ) -> Dict[str, Any]:
+        from ..portal import get_portal_manager
+
+        portal_mgr = get_portal_manager()
+        target_portal = await portal_mgr.get_portal(target_portal_id)
+        if not target_portal:
+            raise ValueError(f"target portal not found: {target_portal_id}")
+
+        candidates = await self.list_candidates(user_id=user_id)
+        allowed_status = {ArtifactCandidateStatus.MATERIALIZED}
+        if include_pending:
+            allowed_status.add(ArtifactCandidateStatus.PENDING)
+        rows: List[Dict[str, Any]] = []
+        target_text = f"{target_portal.name}\n{target_portal.description}".strip()
+        for item in candidates:
+            if item.artifact_type != ArtifactType.SKILL:
+                continue
+            if item.status not in allowed_status:
+                continue
+            source_portal_id = str(item.metadata.get("source_portal_id") or "").strip()
+            if source_portal_id and source_portal_id == target_portal_id:
+                continue
+            cand_text = self._build_transfer_candidate_text(item)
+            semantic = self._token_similarity(target_text, cand_text)
+            raw_assessment = item.metadata.get("value_assessment")
+            raw_score = raw_assessment.get("score") if isinstance(raw_assessment, dict) else None
+            value_score = self._safe_float(raw_score) or 0.0
+            rollout_bonus = 0.0
+            if item.status == ArtifactCandidateStatus.MATERIALIZED:
+                rollout_bonus += 0.12
+            if item.rollout_status in {
+                ArtifactRolloutStatus.GRAYSCALE,
+                ArtifactRolloutStatus.FULL_RELEASED,
+            }:
+                rollout_bonus += 0.08
+            score = max(0.0, min(1.0, round(0.65 * semantic + 0.25 * value_score + rollout_bonus, 6)))
+            if score < min_score:
+                continue
+            rows.append(
+                {
+                    "candidate_id": item.id,
+                    "materialized_skill_id": item.materialized_ref_id,
+                    "task_summary": item.task_summary,
+                    "source_portal_id": source_portal_id or None,
+                    "status": item.status.value,
+                    "rollout_status": item.rollout_status.value,
+                    "score": score,
+                    "score_breakdown": {
+                        "semantic": round(semantic, 6),
+                        "value_score": round(value_score, 6),
+                        "rollout_bonus": round(rollout_bonus, 6),
+                    },
+                    "recommendation": "review_then_bind_to_target_portal",
+                }
+            )
+
+        rows.sort(key=lambda x: x["score"], reverse=True)
+        result_items = rows[: max(1, min(top_k, 100))]
+        return {
+            "target_portal": {
+                "id": target_portal.id,
+                "name": target_portal.name,
+                "description": target_portal.description,
+            },
+            "count": len(result_items),
+            "items": result_items,
+            "filters": {
+                "user_id": user_id,
+                "top_k": top_k,
+                "min_score": min_score,
+                "include_pending": include_pending,
+            },
+        }
+
+    def _build_candidate_assessment(self, candidate: ArtifactCandidate) -> AssessmentResult:
+        metadata = candidate.metadata if isinstance(candidate.metadata, dict) else {}
+        traj = metadata.get("trajectory_cluster") if isinstance(metadata, dict) else {}
+        traj = traj if isinstance(traj, dict) else {}
+        explanations = metadata.get("decision_explanations") if isinstance(metadata, dict) else []
+        signals: Dict[str, Any] = {}
+        if isinstance(explanations, list) and explanations:
+            last = explanations[-1]
+            if isinstance(last, dict) and isinstance(last.get("signals"), dict):
+                signals.update(last["signals"])
+        signals.setdefault("repeat_count", int(traj.get("cluster_size") or 1))
+        signals.setdefault("failure_rate", self._safe_float(metadata.get("failure_rate")) or 0.0)
+        signals.setdefault("tool_call_count", self._safe_int(signals.get("tool_call_count"), 0))
+        signals.setdefault("avg_duration_sec", self._safe_float(metadata.get("avg_duration_sec")) or 0.0)
+        signals.setdefault("strong_signal", bool(metadata.get("strong_signal")))
+        signals.setdefault("precipitation_level", str(metadata.get("precipitation_level") or ""))
+        return self._assessor.assess(task_summary=candidate.task_summary, signals=signals)
+
+    @staticmethod
+    def _parse_iso_dt(raw: Optional[str]) -> Optional[datetime]:
+        text = str(raw or "").strip()
+        if not text:
+            return None
+        try:
+            if text.endswith("Z"):
+                text = text[:-1] + "+00:00"
+            return datetime.fromisoformat(text)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _to_sharegpt_conversations(messages: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+        role_map = {
+            "user": "human",
+            "assistant": "gpt",
+            "system": "system",
+            "tool": "tool",
+        }
+        out: List[Dict[str, str]] = []
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            role = str(msg.get("role") or "").strip().lower()
+            value = str(msg.get("content") or "").strip()
+            if not role or not value:
+                continue
+            out.append({"from": role_map.get(role, role), "value": value})
+        return out
+
+    @staticmethod
+    def _compute_sharegpt_quality(conversations: List[Dict[str, str]]) -> float:
+        if not conversations:
+            return 0.0
+        user_turns = 0
+        assistant_turns = 0
+        total_chars = 0
+        for item in conversations:
+            who = str(item.get("from") or "")
+            val = str(item.get("value") or "")
+            total_chars += len(val)
+            if who == "human":
+                user_turns += 1
+            elif who == "gpt":
+                assistant_turns += 1
+        if user_turns == 0 or assistant_turns == 0:
+            return 0.0
+        turn_score = min(1.0, (user_turns + assistant_turns) / 6.0)
+        length_score = min(1.0, total_chars / 1600.0)
+        balance = 1.0 - min(1.0, abs(user_turns - assistant_turns) / max(1, user_turns + assistant_turns))
+        return max(0.0, min(1.0, 0.4 * turn_score + 0.4 * length_score + 0.2 * balance))
+
+    @staticmethod
+    def _build_transfer_candidate_text(candidate: ArtifactCandidate) -> str:
+        pieces: List[str] = [candidate.task_summary]
+        if candidate.reasons:
+            pieces.extend(candidate.reasons[:3])
+        if isinstance(candidate.metadata, dict):
+            explain = candidate.metadata.get("decision_explanations")
+            if isinstance(explain, list) and explain:
+                first = explain[0]
+                if isinstance(first, dict):
+                    pieces.append(str(first.get("task_summary") or ""))
+        return "\n".join([p for p in pieces if str(p).strip()])
+
+    @staticmethod
+    def _token_similarity(a: str, b: str) -> float:
+        ta = ArtifactFactoryService._tokenize(a)
+        tb = ArtifactFactoryService._tokenize(b)
+        if not ta or not tb:
+            return 0.0
+        inter = len(ta & tb)
+        union = len(ta | tb)
+        if union <= 0:
+            return 0.0
+        return inter / union
+
+    @staticmethod
+    def _tokenize(text: str) -> set[str]:
+        import re
+
+        parts = re.findall(r"[a-z0-9\u4e00-\u9fff]+", (text or "").lower())
+        return {p for p in parts if p}
 
     def _decide_type(
         self,
@@ -1528,7 +2062,8 @@ Requirements:
                 temperature=0.2,
                 max_tokens=2048,
             )
-            code = resp.choices[0].message.content.strip()
+            content = resp.choices[0].message.content
+            code = (content or "").strip()
             if code.startswith("```python"):
                 code = code[9:]
             elif code.startswith("```"):

@@ -277,6 +277,21 @@ class ArtifactRolloutDecisionRequest(BaseModel):
     operator: str = "system"
 
 
+class ArtifactRolloutAutoManageRequest(BaseModel):
+    user_id: Optional[str] = None
+    candidate_ids: List[str] = Field(default_factory=list)
+    only_rollout_status: ArtifactRolloutStatus = ArtifactRolloutStatus.GRAYSCALE
+    min_sample_size: int = 20
+    upgrade_success_rate: float = 0.97
+    rollback_error_rate: float = 0.08
+    max_latency_p95_ms: float = 2500.0
+    min_success_rate_for_rollback: float = 0.85
+    auto_apply: bool = True
+    dry_run: bool = False
+    operator: str = "rollout-bot"
+    limit: int = 50
+
+
 class ArtifactRolloutTransitionRequest(BaseModel):
     target_status: ArtifactRolloutStatus
     operator: str = "system"
@@ -311,9 +326,30 @@ class ArtifactPeriodicLearningRequest(BaseModel):
     min_cluster_size: int = 2
     max_sessions: int = 200
     trigger_revision: bool = True
+    trigger_auto_create: bool = False
+    auto_create_limit: int = 5
     min_revision_samples: int = 12
     revision_cooldown_hours: int = 24
     dry_run: bool = False
+
+
+class ArtifactShareGPTExportRequest(BaseModel):
+    user_id: Optional[str] = None
+    portal_id: Optional[str] = None
+    workflow_id: Optional[str] = None
+    from_time: Optional[str] = None
+    to_time: Optional[str] = None
+    min_quality_score: float = 0.0
+    limit: int = 500
+    max_sessions: int = 1000
+
+
+class ArtifactTransferRecommendationRequest(BaseModel):
+    target_portal_id: str
+    user_id: Optional[str] = None
+    top_k: int = 10
+    min_score: float = 0.15
+    include_pending: bool = True
 
 
 # ============== Application ==============
@@ -2353,6 +2389,36 @@ def create_app() -> FastAPI:
         return candidate.model_dump()
 
     @app.post(
+        "/api/artifacts/rollout/auto-manage",
+        summary="批量自动执行灰度升级/回滚决策",
+    )
+    async def auto_manage_artifact_rollouts(
+        request: ArtifactRolloutAutoManageRequest,
+    ):
+        from ..artifacts import get_artifact_factory_service
+
+        factory = get_artifact_factory_service()
+        try:
+            return await factory.auto_manage_rollouts(
+                user_id=request.user_id,
+                candidate_ids=request.candidate_ids,
+                only_rollout_status=request.only_rollout_status,
+                min_sample_size=request.min_sample_size,
+                upgrade_success_rate=request.upgrade_success_rate,
+                rollback_error_rate=request.rollback_error_rate,
+                max_latency_p95_ms=request.max_latency_p95_ms,
+                min_success_rate_for_rollback=request.min_success_rate_for_rollback,
+                auto_apply=request.auto_apply,
+                dry_run=request.dry_run,
+                operator=request.operator,
+                limit=request.limit,
+            )
+        except ValueError as exc:
+            detail = str(exc)
+            status_code = 404 if "not found" in detail else 400
+            raise HTTPException(status_code=status_code, detail=detail)
+
+    @app.post(
         "/api/artifacts/candidates/{candidate_id}/ab-routing/config",
         summary="配置 A/B 灰度路由策略",
     )
@@ -2487,6 +2553,8 @@ def create_app() -> FastAPI:
             min_cluster_size=request.min_cluster_size,
             dry_run=request.dry_run,
             trigger_revision=request.trigger_revision,
+            trigger_auto_create=request.trigger_auto_create,
+            auto_create_limit=request.auto_create_limit,
             min_revision_samples=request.min_revision_samples,
             revision_cooldown_hours=request.revision_cooldown_hours,
         )
@@ -2494,9 +2562,86 @@ def create_app() -> FastAPI:
             "session_count": len(trajectories),
             "max_sessions": max_sessions,
             "trigger_revision": request.trigger_revision,
+            "trigger_auto_create": request.trigger_auto_create,
+            "auto_create_limit": request.auto_create_limit,
             "dry_run": request.dry_run,
         }
         return result
+
+    @app.post(
+        "/api/artifacts/export/sharegpt",
+        summary="导出 ShareGPT 训练数据",
+    )
+    async def export_artifact_sharegpt(
+        request: ArtifactShareGPTExportRequest,
+    ):
+        from ..artifacts import get_artifact_factory_service
+        from ..copilot import get_copilot_service
+
+        max_sessions = max(1, min(int(request.max_sessions), 10000))
+        min_quality_score = max(0.0, min(float(request.min_quality_score), 1.0))
+        limit = max(1, min(int(request.limit), 5000))
+
+        copilot = get_copilot_service()
+        sessions = await copilot.session_manager.list_sessions()
+        sessions_sorted = sorted(sessions, key=lambda s: s.updated_at, reverse=True)[:max_sessions]
+        trajectories: List[Dict[str, Any]] = []
+        for session in sessions_sorted:
+            session_meta = session.metadata if isinstance(session.metadata, dict) else {}
+            session_user_id = str(session_meta.get("user_id", "")).strip()
+            trajectories.append(
+                {
+                    "session_id": session.session_id,
+                    "user_id": session_user_id or "default",
+                    "workflow_id": session.workflow_id,
+                    "messages": [
+                        {
+                            "role": msg.role,
+                            "content": msg.content,
+                            "tool_calls": msg.tool_calls or [],
+                            "tool_results": msg.tool_results or [],
+                        }
+                        for msg in session.messages
+                    ],
+                    "updated_at": session.updated_at.isoformat(),
+                    "metadata": session_meta,
+                }
+            )
+
+        factory = get_artifact_factory_service()
+        return await factory.export_trajectories_as_sharegpt(
+            trajectories=trajectories,
+            user_id=request.user_id,
+            portal_id=request.portal_id,
+            workflow_id=request.workflow_id,
+            from_time=request.from_time,
+            to_time=request.to_time,
+            min_quality_score=min_quality_score,
+            limit=limit,
+        )
+
+    @app.post(
+        "/api/artifacts/transfer/recommendations",
+        summary="跨 Portal 技能迁移推荐（建议优先）",
+    )
+    async def get_artifact_transfer_recommendations(
+        request: ArtifactTransferRecommendationRequest,
+    ):
+        from ..artifacts import get_artifact_factory_service
+
+        factory = get_artifact_factory_service()
+        try:
+            return await factory.recommend_skill_transfers(
+                target_portal_id=request.target_portal_id,
+                user_id=request.user_id,
+                top_k=max(1, min(int(request.top_k), 100)),
+                min_score=max(0.0, min(float(request.min_score), 1.0)),
+                include_pending=bool(request.include_pending),
+            )
+        except ValueError as exc:
+            detail = str(exc)
+            status_code = 404 if "not found" in detail else 400
+            raise HTTPException(status_code=status_code, detail=detail)
 
     # ============== Search Config Endpoints ==============
 

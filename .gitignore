@@ -55,6 +55,9 @@ data/skills/*
 # Local checkout: MemPalace (do not commit)
 mempalace/
 
+# Local runtime memory artifacts (do not commit)
+proton_global_memory/
+
 # Local checkouts: Reference implementations (do not commit)
 hermes-agent/
 openclaw/

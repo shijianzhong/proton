@@ -840,6 +840,9 @@ class SuperPortalConfig(BaseModel):
 class PortalEventType(str, Enum):
     """Event types streamed from the Super Portal."""
     INTENT_UNDERSTOOD = "intent_understood"         # Intent analysis complete
+    MEMORY_BEHAVIOR_SUGGESTION = "memory_behavior_suggestion"  # Memory-driven suggestions
+    AUTO_SKILL_CREATED = "auto_skill_created"       # Auto-created skill notification
+    AUTO_SKILL_REVISED = "auto_skill_revised"       # Auto-revision skill notification
     PORTAL_DISPATCH_START = "portal_dispatch_start"      # Starting a child portal dispatch
     PORTAL_DISPATCH_RESULT = "portal_dispatch_result"    # Child portal returned result
     WORKFLOW_DISPATCH_START = "workflow_dispatch_start"  # Starting a workflow

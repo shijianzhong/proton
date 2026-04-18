@@ -7,6 +7,7 @@ from .approval import (
     get_approval_service,
 )
 from .policy_engine import PolicyAction, PolicyDecision, ToolPolicyEngine
+from .auto_revision import AutoSkillRevisionSlice
 from .tool_governance import ToolGovernanceSlice
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     "PolicyAction",
     "PolicyDecision",
     "ToolPolicyEngine",
+    "AutoSkillRevisionSlice",
     "ToolGovernanceSlice",
     "get_approval_service",
 ]

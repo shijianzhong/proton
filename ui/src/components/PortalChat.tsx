@@ -214,6 +214,67 @@ const EventCard: React.FC<{ msg: ChatMsg }> = ({ msg }) => {
     );
   }
 
+  if (eventType === 'memory_behavior_suggestion') {
+    const suggestions = Array.isArray(meta?.suggestions) ? meta.suggestions : [];
+    const first = suggestions[0];
+    return (
+      <div className={styles.eventCard}>
+        <div className={styles.eventTitle}>
+          <span>🧠</span> 记忆行为建议
+        </div>
+        {first ? (
+          <div style={{ marginTop: 4, fontSize: '0.78rem', opacity: 0.9 }}>
+            {String(first.title || '建议')} · {String(first.detail || '')}
+          </div>
+        ) : (
+          <div style={{ marginTop: 4, fontSize: '0.78rem', opacity: 0.9 }}>
+            已生成建议，可用于调整回复策略。
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (eventType === 'auto_skill_created') {
+    const candidateId = String(meta?.candidate_id || '');
+    const score = meta?.assessment?.score;
+    const successRate = meta?.assessment?.signals?.success_rate;
+    const rollout = String(meta?.rollout_status || 'grayscale');
+    return (
+      <div className={styles.eventCard}>
+        <div className={styles.eventTitle}>
+          <span>🤖</span> 自动创建了新 Skill（受控灰度）
+        </div>
+        <div style={{ marginTop: 4, fontSize: '0.78rem', opacity: 0.9 }}>
+          候选ID: {candidateId || 'unknown'}
+        </div>
+        <div style={{ marginTop: 4, fontSize: '0.78rem', opacity: 0.9 }}>
+          评估分: {typeof score === 'number' ? score.toFixed(2) : 'N/A'} · 成功率: {typeof successRate === 'number' ? `${(successRate * 100).toFixed(1)}%` : 'N/A'} · 状态: {rollout}
+        </div>
+      </div>
+    );
+  }
+
+  if (eventType === 'auto_skill_revised') {
+    const candidateId = String(meta?.candidate_id || '');
+    const toolName = String(meta?.tool_name || 'unknown_tool');
+    const errorType = String(meta?.error_type || 'unknown');
+    const rollout = String(meta?.rollout_status || 'pending');
+    return (
+      <div className={styles.eventCard}>
+        <div className={styles.eventTitle}>
+          <span>🛠️</span> 自动修订了 Skill（错误驱动）
+        </div>
+        <div style={{ marginTop: 4, fontSize: '0.78rem', opacity: 0.9 }}>
+          工具: {toolName} · 错误类型: {errorType}
+        </div>
+        <div style={{ marginTop: 4, fontSize: '0.78rem', opacity: 0.9 }}>
+          候选ID: {candidateId || 'unknown'} · 发布状态: {rollout}
+        </div>
+      </div>
+    );
+  }
+
   if (eventType === 'workflow_dispatch_result') {
     return (
       <div className={styles.eventCard}>
@@ -464,6 +525,35 @@ const PortalChat: React.FC<PortalChatProps> = ({ portal, onBack, hideBackButton 
             label: `工作流: ${event.workflow_name || event.workflow_id}`,
             status: 'done',
             detail: '执行完成',
+          });
+        } else if (type === 'auto_skill_created') {
+          appendMsg({ role: 'event', content: '', eventType: type, meta: event.metadata || event });
+          const candidateId = String(event.metadata?.candidate_id || 'unknown');
+          const score = event.metadata?.assessment?.score;
+          upsertTimeline(`auto-skill:${candidateId}`, {
+            label: `自动创建Skill: ${candidateId}`,
+            status: 'done',
+            detail: typeof score === 'number' ? `评估分 ${score.toFixed(2)}（灰度）` : '灰度发布',
+          });
+        } else if (type === 'auto_skill_revised') {
+          appendMsg({ role: 'event', content: '', eventType: type, meta: event.metadata || event });
+          const candidateId = String(event.metadata?.candidate_id || 'unknown');
+          const toolName = String(event.metadata?.tool_name || 'unknown_tool');
+          const rollout = String(event.metadata?.rollout_status || 'pending');
+          upsertTimeline(`auto-revision:${candidateId}`, {
+            label: `自动修订Skill: ${toolName}`,
+            status: rollout === 'grayscale' ? 'done' : 'running',
+            detail: `候选 ${candidateId} · ${rollout}`,
+          });
+        } else if (type === 'memory_behavior_suggestion') {
+          appendMsg({ role: 'event', content: '', eventType: type, meta: event.metadata || event });
+          const count = Array.isArray(event.metadata?.suggestions)
+            ? event.metadata.suggestions.length
+            : 0;
+          upsertTimeline(`memory-suggest:${Date.now()}`, {
+            label: '记忆行为建议',
+            status: 'done',
+            detail: count > 0 ? `生成 ${count} 条建议` : '已生成建议',
           });
         } else if (type === 'workflow_execution_event') {
           const meta = event.metadata || {};

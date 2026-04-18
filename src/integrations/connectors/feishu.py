@@ -337,36 +337,52 @@ class FeishuConnector(Connector):
 
         await self._queues.enqueue(
             chat_id,
-            lambda: self._handle_text(app_id, app_secret, domain, chat_id, sender_id, text),
+            lambda: self._handle_text(app_id, app_secret, domain, chat_id, sender_id, message_id, text),
         )
 
-    async def _handle_text(self, app_id: str, app_secret: str, domain: str, chat_id: str, sender_id: str, text: str) -> None:
+    async def _handle_text(
+        self,
+        app_id: str,
+        app_secret: str,
+        domain: str,
+        chat_id: str,
+        sender_id: str,
+        message_id: str,
+        text: str,
+    ) -> None:
         portal_mgr = get_portal_manager()
         svc = await portal_mgr.get_service(self.binding.portal_id)
         if not svc:
             await self._send_text(app_id, app_secret, domain, chat_id, "Portal not found")
             return
+        typing_reaction_id: Optional[str] = None
+        if message_id:
+            typing_reaction_id = await self._add_typing_indicator(app_id, app_secret, domain, message_id)
         session_id = f"feishu:{self.binding.portal_id}:{chat_id}"
         reply = ""
-        async for ev in svc.chat(session_id=session_id, user_message=text, user_id=sender_id or "default", stream=False):
-            if ev.delta:
-                reply += ev.delta
-        reply = reply.strip() or "…"
-        img_url = ""
-        m = self._image_re.search(reply)
-        if m:
-            img_url = m.group(1)
-        if img_url:
-            try:
-                image_key = await self._upload_image(domain, app_id, app_secret, img_url)
-                await self._send_image(app_id, app_secret, domain, chat_id, image_key)
-                cleaned = self._image_re.sub("", reply).strip()
-                if cleaned:
-                    await self._send_text(app_id, app_secret, domain, chat_id, cleaned[:4000])
-                return
-            except Exception as e:
-                logger.warning("[%s/%s] feishu send image failed: %s", self.binding.portal_id, self.binding.channel, str(e))
-        await self._send_text(app_id, app_secret, domain, chat_id, reply[:4000])
+        try:
+            async for ev in svc.chat(session_id=session_id, user_message=text, user_id=sender_id or "default", stream=False):
+                if ev.delta:
+                    reply += ev.delta
+            reply = reply.strip() or "…"
+            img_url = ""
+            m = self._image_re.search(reply)
+            if m:
+                img_url = m.group(1)
+            if img_url:
+                try:
+                    image_key = await self._upload_image(domain, app_id, app_secret, img_url)
+                    await self._send_image(app_id, app_secret, domain, chat_id, image_key)
+                    cleaned = self._image_re.sub("", reply).strip()
+                    if cleaned:
+                        await self._send_text(app_id, app_secret, domain, chat_id, cleaned[:4000])
+                    return
+                except Exception as e:
+                    logger.warning("[%s/%s] feishu send image failed: %s", self.binding.portal_id, self.binding.channel, str(e))
+            await self._send_text(app_id, app_secret, domain, chat_id, reply[:4000])
+        finally:
+            if message_id and typing_reaction_id:
+                await self._remove_typing_indicator(app_id, app_secret, domain, message_id, typing_reaction_id)
 
     async def _download_image(self, domain: str, app_id: str, app_secret: str, image_key: str) -> bytes:
         token = await self._ensure_tenant_token(app_id, app_secret, domain)
@@ -405,6 +421,76 @@ class FeishuConnector(Connector):
         async with self._http.post(url, json=body, headers={"Authorization": f"Bearer {token}"}) as resp:
             await resp.text()
         self.mark_success()
+
+    async def _add_typing_indicator(
+        self,
+        app_id: str,
+        app_secret: str,
+        domain: str,
+        message_id: str,
+    ) -> Optional[str]:
+        if not self._http:
+            return None
+        token = await self._ensure_tenant_token(app_id, app_secret, domain)
+        url = f"{domain.rstrip('/')}/open-apis/im/v1/messages/{message_id}/reactions"
+        body = {"reaction_type": {"emoji_type": "Typing"}}
+        try:
+            async with self._http.post(url, json=body, headers={"Authorization": f"Bearer {token}"}) as resp:
+                raw = await resp.text()
+                if resp.status >= 400:
+                    logger.warning(
+                        "[%s/%s] add typing indicator failed: status=%s body=%s",
+                        self.binding.portal_id,
+                        self.binding.channel,
+                        resp.status,
+                        raw[:200],
+                    )
+                    return None
+                try:
+                    data = json.loads(raw)
+                except Exception:
+                    return None
+                reaction_id = str(((data.get("data") or {}).get("reaction_id")) or "")
+                return reaction_id or None
+        except Exception as e:
+            logger.warning(
+                "[%s/%s] add typing indicator exception: %s",
+                self.binding.portal_id,
+                self.binding.channel,
+                str(e),
+            )
+            return None
+
+    async def _remove_typing_indicator(
+        self,
+        app_id: str,
+        app_secret: str,
+        domain: str,
+        message_id: str,
+        reaction_id: str,
+    ) -> None:
+        if not self._http:
+            return
+        token = await self._ensure_tenant_token(app_id, app_secret, domain)
+        url = f"{domain.rstrip('/')}/open-apis/im/v1/messages/{message_id}/reactions/{reaction_id}"
+        try:
+            async with self._http.delete(url, headers={"Authorization": f"Bearer {token}"}) as resp:
+                if resp.status >= 400:
+                    raw = await resp.text()
+                    logger.warning(
+                        "[%s/%s] remove typing indicator failed: status=%s body=%s",
+                        self.binding.portal_id,
+                        self.binding.channel,
+                        resp.status,
+                        raw[:200],
+                    )
+        except Exception as e:
+            logger.warning(
+                "[%s/%s] remove typing indicator exception: %s",
+                self.binding.portal_id,
+                self.binding.channel,
+                str(e),
+            )
 
     async def _ensure_tenant_token(self, app_id: str, app_secret: str, domain: str) -> str:
         now = time.time()

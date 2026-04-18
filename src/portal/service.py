@@ -40,6 +40,7 @@ from ..core.models import (
 from ..orchestration.workflow import WorkflowManager, get_workflow_manager
 from ..storage.persistence import StorageManager, get_storage_manager
 from .intent import IntentUnderstandingService
+from .memory_behavior import MemoryBehaviorEngine
 from .mempalace_client import MemPalaceClient
 from .mempalace_memory_provider import MemPalaceMemoryProvider
 from .safety import PreGenerationSafetyScanner
@@ -49,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 PORTAL_COLLECTION = "portals"
 SESSION_COLLECTION = "portal_sessions"
+PENDING_EVENTS_KEY = "pending_portal_events"
 SAFETY_BLOCK_MESSAGE = "当前请求触发安全策略，已在生成前拦截。请移除潜在注入/敏感指令后重试。"
 NO_WORKFLOW_FALLBACK_DISABLED_MESSAGE = (
     "当前入口未配置可用工作流，且已关闭 fallback_to_copilot。"
@@ -156,6 +158,22 @@ class PortalService:
         )
         self._client = None   # lazy-initialised OpenAI client
         self._intent_svc: Optional[IntentUnderstandingService] = None
+        self._memory_behavior = MemoryBehaviorEngine()
+        self._memory_behavior_suggest_enabled = (
+            str(os.environ.get("PORTAL_MEMORY_BEHAVIOR_SUGGEST_ENABLED", "true")).strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        self._trajectory_auto_create_enabled = (
+            str(os.environ.get("PORTAL_TRAJECTORY_AUTO_CREATE_ENABLED", "false")).strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        try:
+            self._trajectory_auto_create_limit = max(
+                1,
+                int(str(os.environ.get("PORTAL_TRAJECTORY_AUTO_CREATE_LIMIT", "3")).strip()),
+            )
+        except ValueError:
+            self._trajectory_auto_create_limit = 3
 
     # ------------------------------------------------------------------
     # Public API
@@ -222,6 +240,25 @@ class PortalService:
                 portal_id=self.config.id,
                 user_id=user_id,
             )
+        pending_events = self._drain_pending_events(session)
+        if pending_events:
+            await self._save_session(session)
+            for item in pending_events:
+                etype = str(item.get("type") or "").strip().lower()
+                if etype not in {
+                    PortalEventType.AUTO_SKILL_CREATED.value,
+                    PortalEventType.AUTO_SKILL_REVISED.value,
+                    PortalEventType.MEMORY_BEHAVIOR_SUGGESTION.value,
+                }:
+                    continue
+                payload = item.get("metadata")
+                meta_payload = payload if isinstance(payload, dict) else {}
+                yield PortalEvent(
+                    type=PortalEventType(etype),
+                    session_id=session.session_id,
+                    portal_id=self.config.id,
+                    metadata=meta_payload,
+                )
 
         # 2. Retrieve memories
         memories: List[PortalMemoryEntry] = []
@@ -248,6 +285,20 @@ class PortalService:
                 logger.warning("[Portal] MemPalace unavailable; continue without memory: %s", e)
                 memories = []
                 memory_snapshot = ""
+
+        if self._memory_behavior_suggest_enabled and memories:
+            suggestions = self._memory_behavior.suggest(
+                memories=memories,
+                user_message=user_message,
+                limit=3,
+            )
+            if suggestions:
+                yield PortalEvent(
+                    type=PortalEventType.MEMORY_BEHAVIOR_SUGGESTION,
+                    session_id=session_id,
+                    portal_id=self.config.id,
+                    metadata={"suggestions": suggestions},
+                )
 
         # 3. Build conversation history for context
         history = [
@@ -340,6 +391,7 @@ class PortalService:
 
                             if child_ev.type in {
                                 PortalEventType.INTENT_UNDERSTOOD,
+                                PortalEventType.MEMORY_BEHAVIOR_SUGGESTION,
                                 PortalEventType.WORKFLOW_DISPATCH_START,
                                 PortalEventType.WORKFLOW_DISPATCH_RESULT,
                                 PortalEventType.WORKFLOW_EXECUTION_EVENT,
@@ -458,6 +510,11 @@ class PortalService:
                     user_id=user_id,
                 )
                 exec_context = ExecutionContext(offloader=offloader, backend=self._local_backend)
+                exec_context.metadata.update({
+                    "session_id": session_id,
+                    "user_id": user_id,
+                    "portal_id": self.config.id,
+                })
 
                 plans_by_priority: Dict[int, List[WorkflowDispatchPlan]] = {}
                 for plan in intent_result.dispatch_plans:
@@ -509,6 +566,21 @@ class PortalService:
                             workflow_name=plan.workflow_name,
                             workflow_result=(result_text or "(无输出)")[:500],
                         )
+                for event in self._drain_runtime_auto_events(exec_context):
+                    event_type = str(event.get("type") or "").strip().lower()
+                    if event_type not in {
+                        PortalEventType.AUTO_SKILL_REVISED.value,
+                        PortalEventType.AUTO_SKILL_CREATED.value,
+                    }:
+                        continue
+                    metadata = event.get("metadata")
+                    payload = metadata if isinstance(metadata, dict) else {}
+                    yield PortalEvent(
+                        type=PortalEventType(event_type),
+                        session_id=session_id,
+                        portal_id=self.config.id,
+                        metadata=payload,
+                    )
 
         # 7. Generate response — Backbone direct or Synthesis
         if use_backbone:
@@ -684,6 +756,7 @@ class PortalService:
                     assistant_response=final_answer_for_session,
                     dispatched_workflow_ids=dispatched_workflow_ids,
                     workflow_results=workflow_results,
+                    user_id=user_id,
                 ),
                 task_name="extract_trajectory",
                 session_id=session_id,
@@ -1135,6 +1208,7 @@ class PortalService:
         assistant_response: str,
         dispatched_workflow_ids: List[str],
         workflow_results: Dict[str, str],
+        user_id: str = "default",
     ) -> None:
         """
         Background task: L1 real-time trajectory signal extraction.
@@ -1169,7 +1243,7 @@ class PortalService:
                     await factory.run_periodic_learning_cycle(
                         trajectories=[{
                             "session_id": session_id,
-                            "user_id": "default",
+                            "user_id": user_id,
                             "messages": [
                                 {"role": "user", "content": user_message},
                                 {"role": "assistant", "content": assistant_response},
@@ -1178,6 +1252,8 @@ class PortalService:
                         }],
                         min_cluster_size=1,
                         dry_run=False,
+                        trigger_auto_create=self._trajectory_auto_create_enabled,
+                        auto_create_limit=self._trajectory_auto_create_limit,
                     )
                 except Exception as e:
                     logger.warning(f"[Portal] L3 precipitation failed: {e}")
@@ -1208,10 +1284,16 @@ class PortalService:
                         }
                         for e in entries
                     ]
-                    await factory.run_periodic_learning_cycle(
+                    result = await factory.run_periodic_learning_cycle(
                         trajectories=trajectories,
                         min_cluster_size=2,
                         dry_run=False,
+                        trigger_auto_create=self._trajectory_auto_create_enabled,
+                        auto_create_limit=self._trajectory_auto_create_limit,
+                    )
+                    await self._store_auto_skill_notifications(
+                        session_id=session_id,
+                        result=result,
                     )
                 except Exception as e:
                     logger.warning(f"[Portal] L2 learning cycle failed: {e}")
@@ -1225,6 +1307,80 @@ class PortalService:
             raise
         except Exception as e:
             logger.error(f"[Portal] Trajectory extraction error: {e}")
+
+    async def _store_auto_skill_notifications(
+        self,
+        *,
+        session_id: str,
+        result: Dict[str, Any],
+    ) -> None:
+        auto_creation = result.get("auto_controlled_creation") if isinstance(result, dict) else {}
+        if not isinstance(auto_creation, dict):
+            return
+        created_count = int(auto_creation.get("auto_created_count") or 0)
+        if created_count <= 0:
+            return
+        items = auto_creation.get("items")
+        if not isinstance(items, list):
+            return
+        session = await self._load_session(session_id)
+        if not session:
+            return
+        bucket = session.metadata.get(PENDING_EVENTS_KEY)
+        if not isinstance(bucket, list):
+            bucket = []
+        for item in items:
+            if not isinstance(item, dict) or not item.get("auto_created"):
+                continue
+            bucket.append(
+                {
+                    "type": PortalEventType.AUTO_SKILL_CREATED.value,
+                    "metadata": {
+                        "candidate_id": item.get("candidate_id"),
+                        "rollout_status": item.get("rollout_status"),
+                        "assessment": item.get("assessment"),
+                    },
+                }
+            )
+        if not bucket:
+            return
+        session.metadata[PENDING_EVENTS_KEY] = bucket[-20:]
+        await self._save_session(session)
+
+    @staticmethod
+    def _drain_pending_events(session: PortalSession) -> List[Dict[str, Any]]:
+        data = session.metadata if isinstance(session.metadata, dict) else {}
+        session.metadata = data
+        items = data.get(PENDING_EVENTS_KEY)
+        if not isinstance(items, list):
+            return []
+        data[PENDING_EVENTS_KEY] = []
+        return [item for item in items if isinstance(item, dict)]
+
+    @staticmethod
+    def _drain_runtime_auto_events(context: ExecutionContext) -> List[Dict[str, Any]]:
+        data = context.metadata if isinstance(context.metadata, dict) else {}
+        context.metadata = data
+        raw = data.get("auto_revision_notifications")
+        if not isinstance(raw, list):
+            return []
+        data["auto_revision_notifications"] = []
+        out: List[Dict[str, Any]] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            out.append(
+                {
+                    "type": item.get("type") or PortalEventType.AUTO_SKILL_REVISED.value,
+                    "metadata": {
+                        "candidate_id": item.get("candidate_id"),
+                        "tool_name": item.get("tool_name"),
+                        "error_type": item.get("error_type"),
+                        "rollout_status": item.get("rollout_status"),
+                    },
+                }
+            )
+        return out
 
     async def _synthesise(
         self,

@@ -305,6 +305,38 @@ export interface PublishedWorkflow {
   endpoint: string;
 }
 
+export interface ArtifactTransferRecommendation {
+  candidate_id: string;
+  materialized_skill_id?: string | null;
+  task_summary: string;
+  source_portal_id?: string | null;
+  status: string;
+  rollout_status: string;
+  score: number;
+  score_breakdown?: {
+    semantic?: number;
+    value_score?: number;
+    rollout_bonus?: number;
+  };
+  recommendation: string;
+}
+
+export interface ArtifactTransferRecommendationResponse {
+  target_portal: {
+    id: string;
+    name: string;
+    description: string;
+  };
+  count: number;
+  items: ArtifactTransferRecommendation[];
+  filters: {
+    user_id?: string | null;
+    top_k: number;
+    min_score: number;
+    include_pending: boolean;
+  };
+}
+
 export interface PublishResult {
   workflow_id: string;
   api_key: string;
@@ -1076,6 +1108,17 @@ export const api = {
     data?: { ttl_seconds?: number },
   ): Promise<any> {
     const response = await client.post(`/api/portals/${portalId}/channels/${channel}/pairing`, data ?? {});
+    return response.data;
+  },
+
+  async getArtifactTransferRecommendations(data: {
+    target_portal_id: string;
+    user_id?: string;
+    top_k?: number;
+    min_score?: number;
+    include_pending?: boolean;
+  }): Promise<ArtifactTransferRecommendationResponse> {
+    const response = await client.post('/api/artifacts/transfer/recommendations', data);
     return response.data;
   },
 };

@@ -28,7 +28,8 @@ from ..core.context import ExecutionContext
 from ..core.agent_node import AgentNode
 from ..execution import ExecutableTool, ToolExecutor
 from ..execution.tool_provider import BuiltinToolProvider, PluginToolProvider, SystemToolProvider
-from ..governance import ToolGovernanceSlice
+from ..governance.auto_revision import AutoSkillRevisionSlice
+from ..governance.tool_governance import ToolGovernanceSlice
 from ..plugins.registry import Tool as PluginTool, get_plugin_registry
 from ..tools.base import SystemTool
 from ..tools.registry import get_system_tool_registry
@@ -113,7 +114,7 @@ class BuiltinAgentAdapter(AgentAdapter):
         self._plugin_tools: List[PluginTool] = []
         self._tool_executor = ToolExecutor(
             node=self.node,
-            slices=[ToolGovernanceSlice()],
+            slices=[AutoSkillRevisionSlice(), ToolGovernanceSlice()],
         )
 
     async def initialize(self) -> None:
@@ -238,7 +239,7 @@ class BuiltinAgentAdapter(AgentAdapter):
             
         self._tool_executor = ToolExecutor(
             node=self.node,
-            slices=[ToolGovernanceSlice()],
+            slices=[AutoSkillRevisionSlice(), ToolGovernanceSlice()],
             providers=providers,
         )
 

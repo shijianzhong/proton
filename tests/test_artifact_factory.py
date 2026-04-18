@@ -880,3 +880,336 @@ def test_artifact_auto_revision_cooldown_blocks_after_materialized_child(tmp_pat
         if item.get("candidate_id") == base_candidate_id and item.get("reason") == "cooldown_active"
     ]
     assert blocked
+
+
+def test_artifact_learning_cycle_can_auto_create_controlled_skill(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROTON_STORAGE_TYPE", "file")
+    monkeypatch.setenv("PROTON_STORAGE_PATH", str(tmp_path))
+    monkeypatch.setenv("ARTIFACT_AUTO_CREATE_ENABLED", "true")
+    monkeypatch.setenv("ARTIFACT_ASSESS_TOOL_CALL_TARGET", "2")
+    _reset_singletons()
+
+    client = TestClient(create_app())
+    copilot = copilot_module.get_copilot_service()
+    for _ in range(3):
+        session_resp = client.post("/api/copilot/sessions", json={})
+        assert session_resp.status_code == 200
+        session_id = session_resp.json()["session_id"]
+        session = asyncio.run(copilot.session_manager.get_session(session_id))
+        assert session is not None
+        session.metadata["user_id"] = "u-auto-create"
+        asyncio.run(copilot.session_manager.save(session))
+        asyncio.run(
+            copilot.session_manager.add_message(
+                session_id=session_id,
+                role="user",
+                content="帮我把日报转换为固定结构输出",
+            )
+        )
+        asyncio.run(
+            copilot.session_manager.add_message(
+                session_id=session_id,
+                role="assistant",
+                content="开始处理",
+                tool_calls=[
+                    {"id": f"tc-{session_id}-1", "name": "fetch_data", "arguments": "{}"},
+                    {"id": f"tc-{session_id}-2", "name": "normalize_data", "arguments": "{}"},
+                ],
+            )
+        )
+
+    cycle_resp = client.post(
+        "/api/artifacts/learning/cycle",
+        json={
+            "user_id": "u-auto-create",
+            "min_cluster_size": 2,
+            "trigger_revision": False,
+            "trigger_auto_create": True,
+            "auto_create_limit": 3,
+        },
+    )
+    assert cycle_resp.status_code == 200
+    payload = cycle_resp.json()
+    assert payload["auto_controlled_creation"]["auto_created_count"] >= 1
+
+    list_resp = client.get("/api/artifacts/candidates", params={"user_id": "u-auto-create"})
+    assert list_resp.status_code == 200
+    candidates = list_resp.json()
+    auto_items = [
+        item for item in candidates
+        if item.get("metadata", {}).get("creation_mode") == "auto_controlled"
+    ]
+    assert auto_items
+    first = auto_items[0]
+    assert first["status"] == "materialized"
+    assert first["rollout_status"] == "grayscale"
+    assert first.get("metadata", {}).get("rollout_guard") == "grayscale_only"
+
+
+def test_artifact_learning_cycle_auto_create_disabled_by_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROTON_STORAGE_TYPE", "file")
+    monkeypatch.setenv("PROTON_STORAGE_PATH", str(tmp_path))
+    monkeypatch.setenv("ARTIFACT_AUTO_CREATE_ENABLED", "false")
+    _reset_singletons()
+
+    client = TestClient(create_app())
+    copilot = copilot_module.get_copilot_service()
+    for _ in range(2):
+        session_resp = client.post("/api/copilot/sessions", json={})
+        assert session_resp.status_code == 200
+        session_id = session_resp.json()["session_id"]
+        session = asyncio.run(copilot.session_manager.get_session(session_id))
+        assert session is not None
+        session.metadata["user_id"] = "u-auto-disabled"
+        asyncio.run(copilot.session_manager.save(session))
+        asyncio.run(
+            copilot.session_manager.add_message(
+                session_id=session_id,
+                role="user",
+                content="请把日报信息整理成结构化输出",
+            )
+        )
+
+    cycle_resp = client.post(
+        "/api/artifacts/learning/cycle",
+        json={
+            "user_id": "u-auto-disabled",
+            "min_cluster_size": 2,
+            "trigger_revision": False,
+            "trigger_auto_create": True,
+            "auto_create_limit": 3,
+        },
+    )
+    assert cycle_resp.status_code == 200
+    payload = cycle_resp.json()
+    assert payload["auto_controlled_creation"]["auto_created_count"] == 0
+
+
+def test_artifact_rollout_auto_manage_applies_upgrade(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROTON_STORAGE_TYPE", "file")
+    monkeypatch.setenv("PROTON_STORAGE_PATH", str(tmp_path))
+    _reset_singletons()
+
+    client = TestClient(create_app())
+    decide_resp = client.post(
+        "/api/artifacts/decide",
+        json={
+            "user_id": "u-r4",
+            "task_summary": "工单聚类与回复",
+            "repeat_count": 3,
+            "tool_call_count": 2,
+            "unique_tool_count": 1,
+            "failure_rate": 0.02,
+        },
+    )
+    assert decide_resp.status_code == 200
+    candidate_id = decide_resp.json()["id"]
+
+    assert client.post(
+        f"/api/artifacts/candidates/{candidate_id}/approve",
+        json={"approver": "ops"},
+    ).status_code == 200
+    assert client.post(
+        f"/api/artifacts/candidates/{candidate_id}/rollout/transition",
+        json={"target_status": "grayscale", "operator": "ops"},
+    ).status_code == 200
+
+    for _ in range(20):
+        metric_resp = client.post(
+            f"/api/artifacts/candidates/{candidate_id}/metrics",
+            json={
+                "metrics": {
+                    "success_rate": 0.99,
+                    "error_rate": 0.01,
+                    "latency_p95_ms": 1500,
+                }
+            },
+        )
+        assert metric_resp.status_code == 200
+
+    auto_resp = client.post(
+        "/api/artifacts/rollout/auto-manage",
+        json={"user_id": "u-r4", "auto_apply": True, "operator": "rollout-bot"},
+    )
+    assert auto_resp.status_code == 200
+    payload = auto_resp.json()
+    assert payload["summary"]["selected_count"] >= 1
+    assert payload["summary"]["applied_count"] >= 1
+    item = next(x for x in payload["items"] if x["candidate_id"] == candidate_id)
+    assert item["decision"] == "upgrade"
+    assert item["updated_rollout_status"] == "full_released"
+
+
+def test_artifact_rollout_auto_manage_dry_run_no_apply(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROTON_STORAGE_TYPE", "file")
+    monkeypatch.setenv("PROTON_STORAGE_PATH", str(tmp_path))
+    _reset_singletons()
+
+    client = TestClient(create_app())
+    decide_resp = client.post(
+        "/api/artifacts/decide",
+        json={
+            "user_id": "u-r4-dry",
+            "task_summary": "自动分诊",
+            "repeat_count": 3,
+            "tool_call_count": 2,
+            "unique_tool_count": 1,
+            "failure_rate": 0.02,
+        },
+    )
+    assert decide_resp.status_code == 200
+    candidate_id = decide_resp.json()["id"]
+
+    assert client.post(
+        f"/api/artifacts/candidates/{candidate_id}/approve",
+        json={"approver": "ops"},
+    ).status_code == 200
+    assert client.post(
+        f"/api/artifacts/candidates/{candidate_id}/rollout/transition",
+        json={"target_status": "grayscale", "operator": "ops"},
+    ).status_code == 200
+
+    for _ in range(20):
+        metric_resp = client.post(
+            f"/api/artifacts/candidates/{candidate_id}/metrics",
+            json={
+                "metrics": {
+                    "success_rate": 0.99,
+                    "error_rate": 0.01,
+                    "latency_p95_ms": 1400,
+                }
+            },
+        )
+        assert metric_resp.status_code == 200
+
+    auto_resp = client.post(
+        "/api/artifacts/rollout/auto-manage",
+        json={
+            "user_id": "u-r4-dry",
+            "auto_apply": True,
+            "dry_run": True,
+            "operator": "rollout-bot",
+        },
+    )
+    assert auto_resp.status_code == 200
+    payload = auto_resp.json()
+    item = next(x for x in payload["items"] if x["candidate_id"] == candidate_id)
+    assert item["decision"] == "upgrade"
+    assert item["applied"] is False
+
+    list_resp = client.get("/api/artifacts/candidates", params={"user_id": "u-r4-dry"})
+    assert list_resp.status_code == 200
+    latest = next(v for v in list_resp.json() if v["id"] == candidate_id)
+    assert latest["rollout_status"] == "grayscale"
+
+
+def test_artifact_export_sharegpt(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROTON_STORAGE_TYPE", "file")
+    monkeypatch.setenv("PROTON_STORAGE_PATH", str(tmp_path))
+    _reset_singletons()
+
+    client = TestClient(create_app())
+    copilot = copilot_module.get_copilot_service()
+
+    session_resp = client.post("/api/copilot/sessions", json={})
+    assert session_resp.status_code == 200
+    session_id = session_resp.json()["session_id"]
+    session = asyncio.run(copilot.session_manager.get_session(session_id))
+    assert session is not None
+    session.metadata["user_id"] = "u-export"
+    session.metadata["portal_id"] = "p-export"
+    session.workflow_id = "wf-export"
+    asyncio.run(copilot.session_manager.save(session))
+    asyncio.run(
+        copilot.session_manager.add_message(
+            session_id=session_id,
+            role="user",
+            content="请帮我总结今天的工作进展",
+        )
+    )
+    asyncio.run(
+        copilot.session_manager.add_message(
+            session_id=session_id,
+            role="assistant",
+            content="今天完成了需求分析、接口设计和联调准备。",
+        )
+    )
+
+    export_resp = client.post(
+        "/api/artifacts/export/sharegpt",
+        json={
+            "user_id": "u-export",
+            "portal_id": "p-export",
+            "workflow_id": "wf-export",
+            "min_quality_score": 0.1,
+            "limit": 10,
+            "max_sessions": 100,
+        },
+    )
+    assert export_resp.status_code == 200
+    payload = export_resp.json()
+    assert payload["format"] == "sharegpt"
+    assert payload["count"] >= 1
+    item = payload["items"][0]
+    assert item["meta"]["session_id"] == session_id
+    assert item["meta"]["user_id"] == "u-export"
+    assert item["meta"]["portal_id"] == "p-export"
+    assert item["meta"]["workflow_id"] == "wf-export"
+    assert isinstance(item["conversations"], list) and len(item["conversations"]) >= 2
+    assert item["conversations"][0]["from"] == "human"
+
+
+def test_artifact_transfer_recommendations(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROTON_STORAGE_TYPE", "file")
+    monkeypatch.setenv("PROTON_STORAGE_PATH", str(tmp_path))
+    _reset_singletons()
+
+    client = TestClient(create_app())
+    portal_resp = client.get("/api/portals/default")
+    assert portal_resp.status_code == 200
+    target_portal_id = portal_resp.json()["id"]
+
+    match_resp = client.post(
+        "/api/artifacts/decide",
+        json={
+            "user_id": "u-transfer",
+            "task_summary": "客服工单自动分诊与回复生成",
+            "repeat_count": 4,
+            "tool_call_count": 3,
+            "unique_tool_count": 2,
+            "failure_rate": 0.02,
+            "metadata": {"source_portal_id": "source-a"},
+        },
+    )
+    assert match_resp.status_code == 200
+    non_match_resp = client.post(
+        "/api/artifacts/decide",
+        json={
+            "user_id": "u-transfer",
+            "task_summary": "视频转场与剪辑脚本生成",
+            "repeat_count": 1,
+            "tool_call_count": 1,
+            "unique_tool_count": 1,
+            "failure_rate": 0.08,
+            "metadata": {"source_portal_id": "source-b"},
+        },
+    )
+    assert non_match_resp.status_code == 200
+
+    rec_resp = client.post(
+        "/api/artifacts/transfer/recommendations",
+        json={
+            "target_portal_id": target_portal_id,
+            "user_id": "u-transfer",
+            "top_k": 5,
+            "min_score": 0.0,
+            "include_pending": True,
+        },
+    )
+    assert rec_resp.status_code == 200
+    payload = rec_resp.json()
+    assert payload["count"] >= 1
+    top = payload["items"][0]
+    assert top["candidate_id"] == match_resp.json()["id"]
+    assert top["recommendation"] == "review_then_bind_to_target_portal"
+    assert top["score"] >= 0
