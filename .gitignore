@@ -47,6 +47,7 @@ ui/.env
 .gemini/
 output/
 data/proton.db
+docs/analysis/*.md
 
 # Runtime skill artifacts
 data/skills/*
