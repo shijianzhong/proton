@@ -4,13 +4,14 @@
 
 ## 特性
 
-- **树形 Agent 架构**: 支持主 Agent 下挂多层子 Agent，复杂任务分解与意图路由（Intent Routing）
-- **多平台集成**: 支持 Native、Builtin、Coze、Dify、豆包、AutoGen 等多种 Agent 来源
-- **沙箱隔离执行**: 支持基于 Docker 的 Python 代码执行沙箱，杜绝危险工具逃逸
-- **插件与技能系统**: 支持 MCP、Skill（可由 LLM 自动生成与学习沉淀）、RAG 等插件挂载
-- **深层嵌套保护**: 并发状态隔离（Context Isolation）、循环检测、深度限制、上下文快照压缩
-- **REST API**: 完整的 API 支持，方便集成
-- **可视化编排与超级入口**: Web UI 支持 Agent 关系编排，并提供 Portal 统一超级入口体验
+- **树形 Agent 架构与意图路由**: 支持主 Agent 下挂多层子 Agent，提供顺序、并行、条件、交接等多种路由策略。特别是**基于 LLM 的 Intent 路由**，能动态理解意图、重写子查询并并发分发给子 Agent，最后综合结果。
+- **Super Portal (统一超级入口)**: 提供支持多轮对话的超级入口，具备长期记忆（强依赖 [MemPalace](https://github.com/MemPalace/mempalace)，支持按用户/全局的冷热记忆与快照）、多意图并发路由，并支持子 Portal 级联（Hierarchical Portals）路由分发。
+- **自主进化与学习闭环 (Artifact Factory)**: 基于执行轨迹（Trajectory）自动聚类发现高频任务，通过 LLM 自动编写、沙箱校验并沉淀出可复用的 Python 技能（Skill）或工作流（Workflow），支持指标监控、灰度发布（A/B Test）及错误驱动的自动修复（Auto Revision）。
+- **安全沙箱与策略治理 (Governance)**: 提供基于 Docker / Local 的 Python 代码执行沙箱，杜绝危险工具逃逸。内置多维度的 `PolicyEngine` 支持指令/URL/路径的黑白名单拦截，并支持 Human-in-the-loop (HITL) 审批机制与生成前安全扫描。
+- **多平台集成与 IM 接入**: 适配 Native、Builtin、Coze、Dify、豆包、AutoGen 等多种 Agent 引擎，并通过 `IntegrationsGateway` 无缝对接微信、飞书、钉钉、Telegram 等主流 IM 渠道。
+- **自然语言编排 (Copilot)**: 内置 Copilot 服务，支持通过自然语言对话动态生成、修改和评估 Agent 工作流，并广泛支持各种主流 LLM 模型（OpenAI, DeepSeek, Qwen, Zhipu, Anthropic 等）。
+- **插件与技能系统**: 支持 MCP (Model Context Protocol)、Skill（可由 LLM 自动生成）、RAG 等插件挂载，生态扩展性强。
+- **并发状态安全**: 针对深层嵌套与并行路由，提供严格的上下文快照隔离与深度限制，解决并发读写与死循环问题。
 
 ## 快速开始
 
@@ -65,9 +66,13 @@ python -m src.api.main
 
 ### MemPalace MCP 自检
 
-如果你启用了 Portal 长期记忆（MemPalace），建议在当前 Python 环境执行一次自检：
+Proton 的长期记忆系统强依赖于开源项目 [MemPalace](https://github.com/MemPalace/mempalace)。如果你启用了 Portal 长期记忆（默认启用），建议在当前 Python 环境中确认 MemPalace 的安装与可用性并执行一次自检：
 
 ```bash
+# 请确保已安装 mempalace
+pip install mempalace
+
+# 执行自检脚本
 python scripts/check_mempalace_mcp.py
 ```
 
@@ -170,38 +175,70 @@ curl -X POST http://localhost:8000/api/workflows/{workflow_id}/run \
 
 ## 架构概览
 
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      Web UI / API / IM Connectors                       │
+│           (Feishu, DingTalk, WeChat, Telegram, REST API, UI)            │
+└─────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Super Portal                                  │
+│ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐ │
+│ │ Intent Router│ │ MemoryEngine │ │ Copilot (NL) │ │ Trajectory Extr. │ │
+│ └──────────────┘ └──────────────┘ └──────────────┘ └──────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     Orchestration Engine (Tree-based)                   │
+│         Sequential | Parallel | Conditional | Coordinator | Intent      │
+└─────────────────────────────────────────────────────────────────────────┘
+                                   │
+             ┌─────────────────────┼─────────────────────┐
+             ▼                     ▼                     ▼
+        ┌─────────┐           ┌─────────┐           ┌─────────┐
+        │ Agent 1 │           │ Agent 2 │           │ Agent N │
+        │ (Root)  │           │ (Child) │           │ (Child) │
+        └─────────┘           └─────────┘           └─────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Adapter & Plugin Layer                          │
+│    Native | Coze | Dify | Doubao | AutoGen | MCP Tools | RAG | Skills   │
+└─────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│             Execution & Governance (Sandbox & Policy Engine)            │
+│   Docker/Local Backends | Approval/Deny Policies | Auto-Revision (HITL) │
+└─────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│         Artifact Factory (Autonomous Evolution & Learning Loop)         │
+│     Clustering -> Code Generation -> Verification -> A/B Rollout        │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      Web UI / API                        │
-└─────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────┐
-│                  Orchestration Engine                    │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │           Tree-based Agent Executor              │   │
-│  └─────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-                           │
-           ┌───────────────┼───────────────┐
-           ▼               ▼               ▼
-      ┌─────────┐     ┌─────────┐     ┌─────────┐
-      │ Agent 1 │     │ Agent 2 │     │ Agent N │
-      │ (Root)  │     │ (Child) │     │ (Child) │
-      └─────────┘     └─────────┘     └─────────┘
-           │
-           ▼
-┌─────────────────────────────────────────────────────────┐
-│                    Adapter Layer                         │
-│  Native | Coze | Dify | Doubao | AutoGen | Custom       │
-└─────────────────────────────────────────────────────────┘
-           │
-           ▼
-┌─────────────────────────────────────────────────────────┐
-│                    Plugin System                         │
-│         MCP Tools | Skills | RAG Context                │
-└─────────────────────────────────────────────────────────┘
-```
+
+## 核心优势 (对比 OpenClaw & Hermes Agent)
+
+基于本项目源码实现（非愿景规划），Proton 在工程架构上展现出区别于 OpenClaw 与 Hermes Agent 的独特优势。
+
+**1. 复杂拓扑编排与并发状态隔离**  
+区别于 OpenClaw / Hermes 偏向线性 Chat-Loop 或简单的 Sub-agent 派生，Proton 在底层实现了真正的 `Tree-based Executor`（见 `src/core/tree_executor.py`）。它原生支持 Sequential、Parallel、Conditional 和动态的 Intent 路由。更为关键的是，在进行并行任务分发时，Proton 通过深度拷贝机制实现了严格的 `Context Isolation`（上下文并发隔离），彻底解决了多智能体并行操作同一上下文时的竞态与污染问题。
+
+**2. 生产级的自动化技能演进 (CI/CD for Skills)**  
+虽然 Hermes Agent 也具备技能学习闭环，但 Proton 在 `src/artifacts/service.py` 中实现了一套极其完整的类似于 CI/CD 的工业级流水线。它不仅能通过轨迹聚类（Trajectory Clustering）自动使用 LLM 编写 Python 技能并在沙箱校验，还直接内置了**灰度发布（A/B Test Rollout）**与**错误驱动的自动修复（Auto Revision）**，这使得其在长期无人值守运行中的稳定性远超单纯的 prompt 记忆系统。
+
+**3. 显式化的人机协作与策略治理引擎**  
+OpenClaw 主要依赖工作区文件约束安全边界，而 Proton 在 `src/governance/policy_engine.py` 中抽象出了一套细粒度的企业级治理平面（Governance Plane）。其不仅支持正则级别的黑白名单（指令/URL/路径），还原生引入了明确的 **Human-in-the-loop (HITL)** 机制——当 Agent 试图执行高风险动作时，系统会自动挂起并触发审批流，这在当前强调安全的生产环境部署中是一项必不可少的底座能力。
+
+**4. 零代码自然语言编排 (Copilot)**  
+Proton 内置的 `copilot/service.py` 允许用户完全通过自然语言对话来生成、修改和调度底层的 Tree Workflow，极大降低了构建复杂多智能体协同链路的门槛。
+
+**5. 原生全渠道连接网关**  
+相比 OpenClaw 偏向本地网关的定位，Proton 的 `src/integrations/gateway.py` 已经是面向生产的云端多通道中心，它原生实现了对飞书、钉钉、微信、Telegram 的 WebSocket/Webhook 长短连接适配，做到了一次编排、全渠道就绪。
 
 ## 路由策略
 
@@ -216,54 +253,31 @@ curl -X POST http://localhost:8000/api/workflows/{workflow_id}/run \
 
 ## 项目结构
 
-```
+```text
 proton/
 ├── src/
-│   ├── core/           # 核心抽象
-│   │   ├── models.py       # Pydantic 模型
-│   │   ├── agent_node.py   # Agent 节点
-│   │   ├── context.py      # 上下文管理与并发隔离
-│   │   └── tree_executor.py# 树形执行器（编排内核）
-│   │
-│   ├── execution/      # 执行平面与沙箱
-│   │   ├── backends/       # Docker / Local 执行后端
-│   │   └── tool_executor.py# 统一工具执行器
-│   │
-│   ├── adapters/       # Agent 适配器层
-│   │   ├── native.py       # 原生 Agent
-│   │   ├── builtin.py      # 内置 OpenAI-compatible 工具链 Agent
-│   │   ├── coze.py / dify.py / doubao.py  # 第三方平台
-│   │   └── autogen.py / workflow.py       # AutoGen / 子工作流
-│   │
-│   ├── plugins/        # 插件系统
-│   │   ├── mcp_plugin.py   # MCP 协议支持
-│   │   ├── skill_plugin.py # Python 函数技能
-│   │   └── rag_plugin.py   # 向量检索
-│   │
-│   ├── portal/         # Super Portal (超级入口)
-│   │   ├── intent.py       # LLM 意图理解与分发
-│   │   ├── memory.py       # 多层记忆体系 (Hot/Warm/Cold + 冲突合并)
-│   │   └── trajectory.py   # 轨迹收集与触发学习
-│   │
-│   ├── artifacts/      # 生成物与学习闭环
-│   │   └── service.py      # 沉淀程序化技能 (LLM Write Code)
-│   │
-│   ├── governance/     # 治理与策略平面
-│   │   ├── policy_engine.py# 安全策略与访问控制
-│   │   └── approval.py     # Human-in-the-loop 审批机制
-│   │
+│   ├── core/           # 核心抽象 (Agent 节点、树形执行器、并发隔离上下文)
+│   ├── execution/      # 执行平面与沙箱 (Local / Docker 后端、工具执行器)
+│   ├── adapters/       # Agent 引擎适配器 (Native, Builtin, Coze, Dify, Doubao, AutoGen)
+│   ├── plugins/        # 插件系统 (MCP 协议, Skill 挂载, RAG)
+│   ├── portal/         # Super Portal (多轮对话, 长期记忆, 意图分发, Trajectory 采集)
+│   ├── artifacts/      # 学习闭环与资产工厂 (自动代码生成, A/B 灰度发布, 错误驱动修复)
+│   ├── copilot/        # 自然语言编排服务 (支持多模型、基于会话生成/修改 Workflow)
+│   ├── integrations/   # 渠道接入网关 (飞书、钉钉、微信、Telegram)
+│   ├── governance/     # 治理与策略平面 (Policy Engine 黑白名单拦截, HITL 人工审批机制)
+│   ├── orchestration/  # 工作流调度与路由管理
+│   ├── storage/        # 持久化存储层
 │   └── api/            # FastAPI 接口
-│       └── main.py
 ```
 
 ## 演进方向 (Code Plan)
 
-Proton 正在向“长期运行的 Agent 平台 (Always-on)”演进，近期核心里程碑已达成：
-- [x] **执行平面分层**：废弃 `exec()`，落地 Docker 隔离后端。
-- [x] **上下文并发安全**：通过深度拷贝实现了 Parallel / Intent 并发状态隔离。
-- [x] **自我改进学习**：打通了从 Trajectory 总结到 LLM 生成真实 Skill 代码并落盘的闭环。
-- [x] **记忆与上下文治理**：引入 TTL 记忆层、冲突检测与稳定快照注入。
-- [ ] **执行审批链路 (UI 联动)**：强化 PolicyEngine 与前端 ExecutionPanel 的强制审批闭环。
+Proton 正在向“长期运行的自主 Agent 平台 (Always-on & Autonomous)”演进，近期核心里程碑已达成：
+- [x] **执行平面分层与治理**：落地 Docker / Local 隔离后端，支持基于 `PolicyEngine` 的黑白名单机制与 HitL (Human-in-the-loop) 审批拦截。
+- [x] **上下文并发安全**：通过深度拷贝实现了 Parallel / Intent 并发状态隔离，防止状态竞态与污染。
+- [x] **自我改进与学习闭环 (Artifact Factory)**：打通了从 Trajectory 聚类发现，到 LLM 生成真实 Skill 代码并沙箱校验，最后进行 A/B 灰度测试与指标追踪的完整闭环。并支持根据错误日志自动生成修订候选版。
+- [x] **记忆与上下文治理 (Super Portal)**：引入 MemPalace 记忆层（冷热记忆、冲突合并、全局快照），支持多级 Portal 级联（Hierarchical Portals）。
+- [x] **全渠道集成与 Copilot**：支持对接主流大模型，支持微信、飞书、钉钉、Telegram 多端无缝接入，支持自然语言编排 Agent Workflow。
 - [ ] **回放与评测 (Replay & Benchmark)**：落地离线回归测试。
 
 ## 运行期产物说明
