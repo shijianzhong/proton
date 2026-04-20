@@ -5,6 +5,8 @@ from .builtin import BuiltinAgentAdapter
 from .coze import CozeAgentAdapter
 from .dify import DifyAgentAdapter
 from .doubao import DoubaoAgentAdapter
+from .hermes import HermesAgentAdapter
+from .openclaw import OpenClawAgentAdapter
 from .autogen import AutoGenAgentAdapter
 from .workflow import WorkflowAdapter
 
@@ -17,6 +19,8 @@ __all__ = [
     "CozeAgentAdapter",
     "DifyAgentAdapter",
     "DoubaoAgentAdapter",
+    "HermesAgentAdapter",
+    "OpenClawAgentAdapter",
     "AutoGenAgentAdapter",
     "WorkflowAdapter",
 ]

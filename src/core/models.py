@@ -15,6 +15,8 @@ class AgentType(str, Enum):
     COZE = "coze"              # Coze platform agent
     DIFY = "dify"              # Dify platform agent
     DOUBAO = "doubao"          # Doubao (豆包) platform agent
+    HERMES = "hermes"          # Hermes-Agent service
+    OPENCLAW = "openclaw"      # OpenClaw service
     AUTOGEN = "autogen"        # AutoGen framework agent
     WORKFLOW = "workflow"      # Reference to another workflow (inter-calling)
     CUSTOM = "custom"          # Custom adapter
@@ -415,6 +417,24 @@ class DoubaoConfig(BaseModel):
     user_id: str = "default_user"
 
 
+class HermesConfig(BaseModel):
+    """Configuration for Hermes-Agent service."""
+    api_base: str = "http://localhost:8642"
+    api_key: Optional[str] = None
+    model: str = "hermes-agent"
+    user_id: str = "default_user"
+    chat_path: str = "/v1/chat/completions"
+
+
+class OpenClawConfig(BaseModel):
+    """Configuration for OpenClaw service."""
+    api_base: str = "http://localhost:18789"
+    api_key: Optional[str] = None
+    model: str = "openclaw/default"
+    user_id: str = "default_user"
+    chat_path: str = "/v1/chat/completions"
+
+
 class AutoGenConfig(BaseModel):
     """Configuration for AutoGen framework agents."""
     agent_class: str                        # Full class path
@@ -443,6 +463,8 @@ class AgentConfig(BaseModel):
     coze_config: Optional[CozeConfig] = None
     dify_config: Optional[DifyConfig] = None
     doubao_config: Optional[DoubaoConfig] = None
+    hermes_config: Optional[HermesConfig] = None
+    openclaw_config: Optional[OpenClawConfig] = None
     autogen_config: Optional[AutoGenConfig] = None
     workflow_config: Optional[WorkflowReferenceConfig] = None  # For WORKFLOW type
 

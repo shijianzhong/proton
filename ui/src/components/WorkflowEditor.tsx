@@ -469,6 +469,8 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflowId, onWorkflowC
             <option value="coze">Coze</option>
             <option value="dify">Dify</option>
             <option value="doubao">豆包 (Doubao)</option>
+            <option value="hermes">Hermes-Agent</option>
+            <option value="openclaw">OpenClaw</option>
             <option value="autogen">AutoGen</option>
             <option value="custom">自定义 (Custom)</option>
           </select>

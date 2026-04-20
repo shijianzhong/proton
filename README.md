@@ -52,6 +52,23 @@ DIFY_API_KEY=your_api_key
 
 # 豆包 (可选)
 DOUBAO_API_KEY=your_api_key
+
+# Hermes Agent (可选，作为外部 Agent 引擎接入)
+# 1) 先在 hermes-agent 侧启用 API Server（见下方“外部引擎接入”）
+# 2) Proton 侧可直接使用 Hermes 默认端口 8642（不需要额外配置）
+#    如需自定义：
+HERMES_AGENT_API_BASE=http://localhost:8642
+# 可复用 Hermes 的 API_SERVER_KEY（也可用 HERMES_AGENT_API_KEY）
+HERMES_AGENT_API_KEY=change-me-local-dev
+HERMES_AGENT_MODEL=hermes-agent
+
+# OpenClaw (可选，作为外部 Agent 引擎接入)
+# 1) 先在 openclaw 侧开启 OpenAI compatible 端点（默认关闭）
+# 2) Proton 侧默认使用 http://localhost:18789
+OPENCLAW_API_BASE=http://localhost:18789
+# 可复用 OpenClaw 的 OPENCLAW_GATEWAY_TOKEN / OPENCLAW_GATEWAY_PASSWORD
+OPENCLAW_API_KEY=your_gateway_token_or_password
+OPENCLAW_MODEL=openclaw/default
 ```
 
 ### 运行示例
@@ -63,6 +80,67 @@ python examples/basic_workflow.py
 # 启动 API 服务器
 python -m src.api.main
 ```
+
+## 外部引擎接入（Hermes-Agent / OpenClaw）
+
+Proton 通过 Adapter 层支持将 **Hermes-Agent** 与 **OpenClaw** 作为“外部 Agent 引擎”接入，方式是调用它们的 **OpenAI-compatible HTTP API**。
+
+### Hermes-Agent 接入
+
+Hermes-Agent 官方提供 OpenAI-compatible API Server（默认端口 `8642`）。
+
+1) 在 Hermes 侧启用 API Server（示例）
+
+```bash
+# hermes-agent 环境变量（在 hermes-agent 的 .env 或启动环境中设置）
+export API_SERVER_ENABLED=true
+export API_SERVER_KEY=change-me-local-dev
+
+# 启动 gateway（会同时启动 API server）
+hermes gateway
+
+# 验证
+curl http://localhost:8642/health
+curl http://localhost:8642/v1/models
+```
+
+2) 在 Proton 侧使用
+
+- 在 Web UI 里创建/编辑 Workflow 节点时，`Agent Type` 选择 `Hermes-Agent` 即可
+- Proton 默认会连接 `http://localhost:8642/v1/chat/completions`（无需额外配置）
+- 如需自定义，设置：
+  - `HERMES_AGENT_API_BASE`（不带 `/v1`）
+  - `HERMES_AGENT_API_KEY`（也可复用 `API_SERVER_KEY`）
+  - `HERMES_AGENT_MODEL`（默认 `hermes-agent`）
+
+### OpenClaw 接入
+
+OpenClaw Gateway 同样提供 OpenAI-compatible HTTP API，但 **默认关闭**，需要先在 OpenClaw 侧开启。
+
+1) 在 OpenClaw 侧开启 `/v1/chat/completions`
+
+- 在 OpenClaw 配置中设置：
+  - `gateway.http.endpoints.chatCompletions.enabled: true`
+- 启动 gateway（默认端口 `18789`）：
+
+```bash
+openclaw gateway --port 18789
+
+# 验证
+curl http://localhost:18789/health
+curl http://localhost:18789/v1/models
+```
+
+2) 在 Proton 侧使用
+
+- 在 Web UI 里创建/编辑 Workflow 节点时，`Agent Type` 选择 `OpenClaw`
+- Proton 默认会连接 `http://localhost:18789/v1/chat/completions`（无需额外配置）
+- 如需自定义，设置：
+  - `OPENCLAW_API_BASE`（不带 `/v1`；也可从 `OPENCLAW_GATEWAY_URL=ws://...` 自动推导）
+  - `OPENCLAW_API_KEY`（也可复用 `OPENCLAW_GATEWAY_TOKEN` / `OPENCLAW_GATEWAY_PASSWORD`）
+  - `OPENCLAW_MODEL`（默认 `openclaw/default`）
+
+安全提示：OpenClaw 的 OpenAI-compatible HTTP 端点在 shared-secret 模式下是 **operator 级别能力**，请不要暴露到公网，并妥善管理 token/password。
 
 ### MemPalace MCP 自检
 
